@@ -33,7 +33,7 @@ export function mapRow(r: Record<string, unknown>): CatalogItem {
   };
 }
 
-export interface Existing { ax: string; name: string; price: number | null; vendorCode: string; active: boolean }
+export interface Existing { ax: string; name: string; price: number | null; vendorCode: string; active: boolean; keep?: boolean }
 export interface Preview {
   added: CatalogItem[]; updated: { item: CatalogItem; changes: string[] }[]; unchanged: number;
   hidden: Existing[]; errors: { row: number; reason: string }[];
@@ -59,7 +59,7 @@ export function diffCatalog(rows: Record<string, unknown>[], existing: Existing[
     ].filter(Boolean) as string[];
     changes.length ? p.updated.push({ item: it, changes }) : p.unchanged++;
   });
-  // Chỉ ẩn sản phẩm từng có trong file (có NCC); sản phẩm tạo tay / chuyển từ ExpiryDay giữ nguyên.
-  p.hidden = existing.filter(e => e.active && e.vendorCode && !seenAx.has(e.ax));
+  // Sản phẩm chuyển từ ExpiryDay (keep) không bị ẩn dù không có trong file.
+  p.hidden = existing.filter(e => e.active && !e.keep && !seenAx.has(e.ax));
   return p;
 }

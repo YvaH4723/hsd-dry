@@ -19,10 +19,10 @@ export async function readRows(file: File, col = 'AX Code', what = 'GTB Cadencia
 async function loadExisting(store: string): Promise<Existing[]> {
   const out: Existing[] = [];
   for (let i = 0; ; i += 1000) {
-    const { data, error } = await supabase.from('products').select('ax_code,name,price,active,vendors(code)')
+    const { data, error } = await supabase.from('products').select('ax_code,name,price,active,category,vendors(code)')
       .eq('store_id', store).not('ax_code', 'is', null).is('deleted_at', null).order('ax_code').range(i, i + 999);
     if (error) throw error;
-    out.push(...data.map((p: any) => ({ ax: p.ax_code, name: p.name, price: p.price == null ? null : Number(p.price), vendorCode: p.vendors?.code ?? '', active: p.active })));
+    out.push(...data.map((p: any) => ({ ax: p.ax_code, name: p.name, price: p.price == null ? null : Number(p.price), vendorCode: p.vendors?.code ?? '', active: p.active, keep: p.category === 'Từ ExpiryDay' })));
     if (data.length < 1000) return out;
   }
 }
