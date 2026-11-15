@@ -46,7 +46,7 @@ export function diffCatalog(rows: Record<string, unknown>[], existing: Existing[
   const p: Preview = { added: [], updated: [], unchanged: 0, hidden: [], errors: [] };
   rows.forEach((r, i) => {
     const it = mapRow(r), row = i + 1;
-    if (!it.ax && !it.barcodes.length) return p.errors.push({ row, reason: 'Không có AX Code và mã vạch' });
+    if (!it.ax) return p.errors.push({ row, reason: 'Thiếu AX Code' });
     if (!it.name) return p.errors.push({ row, reason: 'Thiếu tên' });
     if (it.ax && seenAx.has(it.ax)) return p.errors.push({ row, reason: `AX Code ${it.ax} lặp` });
     const clash = it.barcodes.find(b => seenBc.has(b));
