@@ -202,7 +202,7 @@ function render(){
   $('stats').innerHTML=
    `Lần quét thành công: <b>${S.hits}</b> · lượt giải mã: ${S.loops}`+
    (S.loops?` · trung bình ${(S.detMs/S.loops).toFixed(0)} ms/lượt`:'')+
-   `<br>Bộ giải mã: ${S.backend||'—'} · lần xin camera: ${S.permAsks}`+
+   `<br>Bộ giải mã: ${S.backend||'—'} · lần xin camera: ${S.permAsks} · tự mở lại: ${S.resumes||0}`+
    (S.errors.length?`<br><span class="bad">Lỗi: ${S.errors.slice(-3).join(' | ')}</span>`:'');
   $('log').innerHTML=S.log.map(l=>`<tr><td>${l.code}</td><td>${l.fmt}</td><td>${l.el}</td><td>${l.how}</td></tr>`).join('');
 }
@@ -210,11 +210,14 @@ function copy(){
   const t=['HSD thử quét',$('env').innerText.replace(/\n/g,' '),$('stats').innerText,...S.log.map(l=>[l.code,l.fmt,l.el,l.how].join(' | '))].join('\n');
   (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>status('Đã chép. Dán vào chat.'),()=>{prompt('Chép đoạn này:',t)});
 }
-$('bStart').onclick=start;$('bStop').onclick=()=>stop();$('bSwitch').onclick=switchCam;$('bTorch').onclick=torch;
+$('bStart').onclick=()=>{S.want=true;start()};$('bStop').onclick=()=>{S.want=false;stop()};$('bSwitch').onclick=switchCam;$('bTorch').onclick=torch;
 $('bMan').onclick=manual;$('man').addEventListener('keydown',e=>{if(e.key==='Enter')manual()});
 $('fPhoto').onchange=photo;$('bCopy').onclick=copy;
 $('bClear').onclick=()=>{S.log=[];S.lastCode='';S.hits=S.loops=S.detMs=0;S.errors=[];$('res').textContent='—';$('resInfo').textContent='';render()};
-document.addEventListener('visibilitychange',()=>{if(document.hidden&&S.stream)stop()});
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){if(S.stream)stop(true)}
+  else if(S.want&&!S.stream){S.resumes=(S.resumes||0)+1;status('Tự mở lại camera...');start()}
+});
 envInfo();render();
 </script>
 </body>
