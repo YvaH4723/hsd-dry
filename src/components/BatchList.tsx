@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { supabase, canDelete, canWrite, type Member } from '../supabase.ts';
-import { audit, BATCH_COLS, fetchAll, pname, useShelves, useTerms } from '../lib/db.ts';
+import { canDelete, canWrite, type Member } from '../supabase.ts';
+import { pname, useShelves, useTerms } from '../lib/db.ts';
+import { loadBatches, updateBatchOffline } from '../lib/offline.ts';
 import { actionFor, type LotProduct } from '../lib/action.ts';
 import ActionLine from './ActionLine.tsx';
 import { daysLeft, fmt } from '../lib/dates.ts';
@@ -21,13 +22,7 @@ export default function BatchList({ member, shelfId, productId, reloadKey }: { m
 
   async function load() {
     try {
-      const data = await fetchAll<any>((a, b) => {
-        let q = supabase.from('batches').select(BATCH_COLS)
-          .eq('store_id', store).is('deleted_at', null).in('status', ['on_shelf', 'discounted', 'return_notified']);
-        if (shelfId) q = q.eq('shelf_id', shelfId);
-        if (productId) q = q.eq('product_id', productId);
-        return q.order('expiry_date').order('id').range(a, b);
-      });
+      const data = await loadBatches(store, { shelfId, productId });
       setErr(''); setRows(data);
     } catch (e: any) { setErr(e.message); }
   }
@@ -73,9 +68,9 @@ function Editor({ b, member, shelves, done }: { b: Batch; member: Member; shelve
   const before = { qty: b.qty, shelf_id: b.shelf_id, expiry_date: b.expiry_date, status: b.status };
 
   async function upd(patch: Record<string, unknown>, action: string) {
-    const { error } = await supabase.from('batches').update(patch).eq('id', b.id);
-    if (error) return setMsg('Lỗi: ' + error.message);
-    audit(member.store_id, b.id, action, before, patch);
+    const view = 'shelf_id' in patch ? { shelves: shelves.find(s => s.id === patch.shelf_id) ?? null } : undefined;
+    await updateBatchOffline(member.store_id, b.id, patch, action, before, view);
+    setMsg('');
     done();
   }
   return (

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
-import { supabase, canWrite, type Member } from '../supabase.ts';
-import { audit, BATCH_COLS, fetchAll, pname, useTerms } from '../lib/db.ts';
+import { canWrite, type Member } from '../supabase.ts';
+import { pname, useTerms } from '../lib/db.ts';
+import { loadBatches, updateBatchOffline } from '../lib/offline.ts';
 import { actionFor, type Action, type LotProduct } from '../lib/action.ts';
 import { daysLeft, fmt } from '../lib/dates.ts';
 import ActionLine from '../components/ActionLine.tsx';
@@ -18,8 +19,7 @@ export default function Today({ member }: { member: Member }) {
   async function load() {
     if (!terms) return;
     try {
-      const data = await fetchAll<any>((a, b) => supabase.from('batches').select(BATCH_COLS).eq('store_id', store).is('deleted_at', null)
-        .in('status', ['on_shelf', 'discounted', 'return_notified']).order('expiry_date').order('id').range(a, b));
+      const data = await loadBatches(store, {});
       setErr('');
       setLots(data.map(b => ({ ...b, a: actionFor(b, b.products, terms) })));
     } catch (e: any) { setErr(e.message); }
@@ -27,9 +27,7 @@ export default function Today({ member }: { member: Member }) {
   useEffect(() => { load(); }, [terms]);
 
   async function mark(l: Lot, status: string) {
-    const { error } = await supabase.from('batches').update({ status }).eq('id', l.id);
-    if (error) return setErr(error.message);
-    audit(store, l.id, status, { status: l.status }, { status });
+    await updateBatchOffline(store, l.id, { status }, status, { status: l.status });
     load();
   }
 

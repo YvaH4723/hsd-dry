@@ -6,6 +6,7 @@ import { parseTerm, resolveVendors } from '../src/lib/terms.ts';
 import { barcodesOf, diffCatalog, mapRow, unaccent } from '../src/lib/cadencia.ts';
 import { addShelfLife, daysLeft, parseDmy } from '../src/lib/dates.ts';
 import { actionFor, indexTerms } from '../src/lib/action.ts';
+import { applyOutbox, type Op } from '../src/lib/offline.ts';
 
 // Quy tắc nghiệp vụ trong kế hoạch
 const t = (v: unknown) => { const r = parseTerm(v); return r.review ? 'review' : `${r.action}:${r.days}`; };
@@ -60,6 +61,21 @@ assert.equal(daysLeft('2026-11-20', new Date(2026, 10, 15, 23, 59)), 5);
   assert.equal(actionFor(lot, P(null, 'p1', { vendor_id: null }), C5).label, 'Chưa có NCC');
   assert.equal(actionFor(lot, P('Twinings', 'p1', { no_return: true }), C5).kind, 'discount');               // cờ không đổi trả
   assert.equal(actionFor({ expiry_date: '2027-01-01', expiry_note: 'action_date' }, P('Twinings'), C5).date, '2027-01-01');
+}
+{ // ghép dữ liệu máy chủ với thay đổi đang chờ gửi
+  const rows = [{ id: 'a', expiry_date: '2027-02-01', status: 'on_shelf', shelf_id: 'k1', products: { id: 'p1' } },
+                { id: 'b', expiry_date: '2027-01-01', status: 'on_shelf', shelf_id: 'k2', products: { id: 'p2' } }];
+  const box: Op[] = [
+    { opId: '1', kind: 'insert', table: 'batches', row: {}, view: { id: 'n', expiry_date: '2026-12-01', status: 'on_shelf', shelf_id: 'k1', products: { id: 'p1' } } },
+    { opId: '2', kind: 'update', table: 'batches', id: 'b', patch: { status: 'sold_out' } },
+    { opId: '3', kind: 'update', table: 'batches', id: 'a', patch: { qty: 9, shelf_id: 'k2' }, view: { shelves: { name: 'K2' } } },
+    { opId: '4', kind: 'audit', row: {} },
+  ];
+  const all = applyOutbox(rows, box, {});
+  assert.deepEqual(all.map(r => r.id), ['n', 'a']);                     // thêm mới hiện, bán hết biến mất, sắp theo HSD
+  assert.equal(all[1].qty, 9); assert.equal(all[1].shelves.name, 'K2');
+  assert.deepEqual(applyOutbox(rows, box, { shelfId: 'k1' }).map(r => r.id), ['n']);
+  assert.equal(applyOutbox([...rows, { ...box[0].kind === 'insert' ? (box[0] as any).view : {} }], box, {}).length, 2); // đã lên máy chủ: không trùng
 }
 console.log('Quy tắc: OK');
 

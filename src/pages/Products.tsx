@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase, canWrite, type Member } from '../supabase.ts';
-import { codeVariants, money, pname, PRODUCT_COLS, searchProducts, useTerms, type Product } from '../lib/db.ts';
+import { money, pname, searchByCode, searchProducts, useTerms, type Product } from '../lib/db.ts';
 import ProductInfo, { showCodes, vendorText } from '../components/ProductInfo.tsx';
 import BatchList from '../components/BatchList.tsx';
 
@@ -23,8 +23,7 @@ export default function Products({ member, onAdd }: { member: Member; onAdd: (p:
     if (s.length < 2) { setRows([]); return; }
     const t = setTimeout(async () => {
       const res = /^\d{6,14}$/.test(s)
-        ? await supabase.from('barcodes').select(`products(${PRODUCT_COLS})`).eq('store_id', member.store_id).in('code', codeVariants(s)).is('deleted_at', null)
-            .then(r => ({ data: (r.data ?? []).map((b: any) => b.products).filter((p: any, i: number, a: any[]) => p && a.findIndex(x => x?.id === p.id) === i), error: r.error }))
+        ? await searchByCode(member.store_id, s)
         : await searchProducts(member.store_id, s);
       setErr(res.error?.message ?? '');
       setRows((res.data as unknown as Product[]) ?? []);

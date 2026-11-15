@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
-import { audit, codeVariants, findByCode, money, pname, searchProducts, useShelves, useTerms, type Product } from '../lib/db.ts';
+import { codeVariants, findByCode, money, pname, searchProducts, useShelves, useTerms, type Product } from '../lib/db.ts';
 import { actionFor } from '../lib/action.ts';
+import { addBatchOffline, isNet } from '../lib/offline.ts';
 import ProductInfo, { vendorText } from '../components/ProductInfo.tsx';
 import ActionLine from '../components/ActionLine.tsx';
 import { fmt } from '../lib/dates.ts';
@@ -50,6 +51,10 @@ export default function AddBatch({ member, initial, onClose }: { member: Member;
     if (unknown) {
       const rows = (/^\d{11,12}$/.test(unknown) ? codeVariants(unknown) : [unknown]).map(code => ({ store_id: store, product_id: p.id, code }));
       const { data, error } = await supabase.from('barcodes').upsert(rows, { onConflict: 'store_id,code', ignoreDuplicates: true }).select('code');
+      if (error && isNet(error)) {   // mất mạng: vẫn cho thêm lô, gắn mã sau
+        setProduct(p); setUnknown(''); setQ(''); setHits([]);
+        return setMsg('Đang mất mạng: chưa gắn được mã ' + unknown + ', vẫn thêm lô được. Có mạng thì quét lại để gắn mã.');
+      }
       if (error) return setMsg('Lỗi gắn mã: ' + error.message);
       if (!data?.length) {
         const { data: o } = await supabase.from('barcodes').select('deleted_at,products(name)').eq('store_id', store).in('code', rows.map(r => r.code)).limit(1).maybeSingle();
@@ -62,13 +67,16 @@ export default function AddBatch({ member, initial, onClose }: { member: Member;
   async function save() {
     if (!product || !date.exp) return;
     setBusy(true);
-    const row = { store_id: store, product_id: product.id, shelf_id: shelf || null, qty: Math.max(0, parseInt(qty) || 0), expiry_date: date.exp, mfg_date: date.mfg };
-    const { data, error } = await supabase.from('batches').insert(row).select('id').single();
+    const row = { product_id: product.id, shelf_id: shelf || null, qty: Math.max(0, parseInt(qty) || 0), expiry_date: date.exp, mfg_date: date.mfg };
+    const sh = shelves.find(s => s.id === shelf);
+    const view = { ...row, expiry_note: null, status: 'on_shelf', shelves: sh ? { name: sh.name } : null,
+      products: { id: product.id, name: product.name, name_vi: product.name_vi, ax_code: product.ax_code, brand: product.brand, vendor_id: product.vendor_id,
+        no_return: product.no_return, sanh_dieu: product.sanh_dieu, vendors: product.vendors ?? null } };
+    const { offline } = await addBatchOffline(store, row, view);
     setBusy(false);
-    if (error) return setMsg('Lỗi lưu: ' + error.message);
-    audit(store, data.id, 'add', null, row);
-    setSaved(s => [`${pname(product)} · SL ${row.qty} · HSD ${fmt(date.exp!)}`, ...s].slice(0, 5));
-    setProduct(null); setQty('1'); setDate({ exp: null, mfg: null }); setDateKey(k => k + 1); setMsg('Đã lưu. Quét món tiếp theo.');
+    setSaved(s => [`${pname(product)} · SL ${row.qty} · HSD ${fmt(date.exp!)}${offline ? ' (chờ gửi)' : ''}`, ...s].slice(0, 5));
+    setProduct(null); setQty('1'); setDate({ exp: null, mfg: null }); setDateKey(k => k + 1);
+    setMsg(offline ? 'Đã lưu trên máy (đang mất mạng), sẽ tự gửi khi có mạng. Quét món tiếp theo.' : 'Đã lưu. Quét món tiếp theo.');
   }
 
   return (
