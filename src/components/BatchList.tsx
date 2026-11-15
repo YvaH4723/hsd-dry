@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { supabase, canDelete, canWrite, type Member } from '../supabase.ts';
-import { audit, BATCH_COLS, fetchAll, useShelves, useTerms } from '../lib/db.ts';
+import { audit, BATCH_COLS, fetchAll, pname, useShelves, useTerms } from '../lib/db.ts';
 import { actionFor, type LotProduct } from '../lib/action.ts';
 import ActionLine from './ActionLine.tsx';
 import { daysLeft, fmt } from '../lib/dates.ts';
 import DateInput from './DateInput.tsx';
 
-interface Batch { id: string; qty: number; expiry_date: string; expiry_note: string | null; status: string; shelf_id: string | null; shelves: { name: string } | null; products: LotProduct & { name: string; ax_code: string | null } }
+interface Batch { id: string; qty: number; expiry_date: string; expiry_note: string | null; status: string; shelf_id: string | null; shelves: { name: string } | null; products: LotProduct & { name: string; name_vi?: string | null; ax_code: string | null } }
 const RANGES = [['all', 'Tất cả'], ['over', 'Quá hạn'], ['7', '≤ 7 ngày'], ['30', '≤ 30 ngày'], ['90', '≤ 90 ngày']] as const;
 
 // Danh sách lô theo ngày còn lại; đỏ khi quá hạn. Lô quá hạn chỉ gắn cờ, không tự trừ tồn.
@@ -49,7 +49,7 @@ export default function BatchList({ member, shelfId, productId, reloadKey }: { m
             return (
               <div className="item" key={b.id}>
                 <div className="click" onClick={() => canWrite(member) && setEdit(edit === b.id ? null : b.id)}>
-                  <div className="row"><span style={{ flex: 3 }}>{productId ? (b.shelves?.name ?? 'Chưa có kệ') : b.products.name}</span>
+                  <div className="row"><span style={{ flex: 3 }}>{productId ? (b.shelves?.name ?? 'Chưa có kệ') : pname(b.products)}</span>
                     <span style={{ textAlign: 'right' }} className={d < 0 ? 'over' : d <= 30 ? 'soon' : ''}>{d < 0 ? `Quá ${-d} ngày` : d === 0 ? 'Hết hạn hôm nay' : `Còn ${d} ngày`}</span></div>
                   {b.expiry_note === 'estimated' && <div className="warn">HSD ước tính từ ExpiryDay, kiểm lại trên bao bì</div>}
                   <div className="mute">{b.expiry_note === 'action_date' ? 'Ngày báo trả' : 'HSD'} {fmt(b.expiry_date)} · SL {b.qty}{!productId && !shelfId && b.shelves ? ' · ' + b.shelves.name : ''}</div>

@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { supabase, canWrite, type Member } from '../supabase.ts';
-import { audit, BATCH_COLS, fetchAll, useTerms } from '../lib/db.ts';
+import { audit, BATCH_COLS, fetchAll, pname, useTerms } from '../lib/db.ts';
 import { actionFor, type Action, type LotProduct } from '../lib/action.ts';
 import { daysLeft, fmt } from '../lib/dates.ts';
 import ActionLine from '../components/ActionLine.tsx';
 
-interface Lot { id: string; qty: number; expiry_date: string; expiry_note: string | null; status: string; shelves: { name: string } | null; products: LotProduct & { name: string; ax_code: string | null }; a: Action }
+interface Lot { id: string; qty: number; expiry_date: string; expiry_note: string | null; status: string; shelves: { name: string } | null; products: LotProduct & { name: string; name_vi?: string | null; ax_code: string | null }; a: Action }
 const SOON = 7;
 
 // "Hôm nay cần làm": quá HSD → quá ngày báo trả → báo trả trong 7 ngày → cần dán giảm giá.
@@ -52,7 +52,7 @@ export default function Today({ member }: { member: Member }) {
           <b>{title} ({items.length})</b>
           {items.map(l => (
             <div className="item" key={l.id}>
-              <div>{l.products.name}</div>
+              <div>{pname(l.products)}</div>
               <div className="mute">{l.expiry_note === 'action_date' ? 'Chưa có HSD' : `HSD ${fmt(l.expiry_date)}${l.expiry_note ? ' (ước tính)' : ''}`} · SL {l.qty}{l.shelves ? ' · ' + l.shelves.name : ''}</div>
               <ActionLine a={l.a} status={l.status} />
               {kind && canWrite(member) && (

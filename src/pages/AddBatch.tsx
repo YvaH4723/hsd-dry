@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
-import { audit, codeVariants, findByCode, money, searchProducts, useShelves, useTerms, type Product } from '../lib/db.ts';
+import { audit, codeVariants, findByCode, money, pname, searchProducts, useShelves, useTerms, type Product } from '../lib/db.ts';
 import { actionFor } from '../lib/action.ts';
 import ProductInfo, { vendorText } from '../components/ProductInfo.tsx';
 import ActionLine from '../components/ActionLine.tsx';
@@ -67,7 +67,7 @@ export default function AddBatch({ member, initial, onClose }: { member: Member;
     setBusy(false);
     if (error) return setMsg('Lỗi lưu: ' + error.message);
     audit(store, data.id, 'add', null, row);
-    setSaved(s => [`${product.name} · SL ${row.qty} · HSD ${fmt(date.exp!)}`, ...s].slice(0, 5));
+    setSaved(s => [`${pname(product)} · SL ${row.qty} · HSD ${fmt(date.exp!)}`, ...s].slice(0, 5));
     setProduct(null); setQty('1'); setDate({ exp: null, mfg: null }); setDateKey(k => k + 1); setMsg('Đã lưu. Quét món tiếp theo.');
   }
 
@@ -86,7 +86,8 @@ export default function AddBatch({ member, initial, onClose }: { member: Member;
           {q.trim().length >= 2 && !hits.length && <p className="mute">Không tìm thấy.</p>}
           {hits.map(p => (
             <div className="item click" key={p.id} onClick={() => unknown ? attach(p) : (setProduct(p), setQ(''), setHits([]))}>
-              {p.name}
+              {pname(p)}
+              {p.name_vi && <div className="mute">{p.name}</div>}
               <div className="mute">{[p.ax_code, p.brand, money(p.price)].filter(Boolean).join(' · ')}</div>
               <div className="mute">NCC: {vendorText(p)}</div>
             </div>

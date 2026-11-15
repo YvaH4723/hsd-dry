@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase, canWrite, type Member } from '../supabase.ts';
-import { codeVariants, money, PRODUCT_COLS, searchProducts, useTerms, type Product } from '../lib/db.ts';
+import { codeVariants, money, pname, PRODUCT_COLS, searchProducts, useTerms, type Product } from '../lib/db.ts';
 import ProductInfo, { showCodes, vendorText } from '../components/ProductInfo.tsx';
 import BatchList from '../components/BatchList.tsx';
 
@@ -51,7 +51,8 @@ export default function Products({ member, onAdd }: { member: Member; onAdd: (p:
       <div className="card" hidden={!rows.length}>
         {rows.map(r => (
           <div className="item click" key={r.id} onClick={() => setOpen(r)}>
-            <div>{r.name} {!r.active && <span className="warn">(không có trong Cadencia)</span>}</div>
+            <div>{pname(r)} {!r.active && <span className="warn">(không có trong Cadencia)</span>}</div>
+            {r.name_vi && <div className="mute">{r.name}</div>}
             <div className="mute">{[r.ax_code, r.brand, money(r.price)].filter(Boolean).join(' · ')}</div>
             <div className="mute">{showCodes(r)}</div>
             <div className="mute">NCC: {vendorText(r)}</div>

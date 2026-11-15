@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
-import { money, type Product } from '../lib/db.ts';
+import { money, pname, type Product } from '../lib/db.ts';
 import { describeTerm, termAt, termFor, type Cfg } from '../lib/action.ts';
 import { TermEditor } from '../pages/Terms.tsx';
 
@@ -13,17 +13,30 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
   const admin = member.role === 'admin';
   const [edit, setEdit] = useState(false);
   const [err, setErr] = useState('');
+  const [vi, setVi] = useState<string | null>(null);
   const t = terms ? termFor(p, terms.idx) : null;
 
-  async function flag(field: 'no_return' | 'sanh_dieu', value: boolean) {
-    const { error } = await supabase.from('products').update({ [field]: value }).eq('id', p.id);
+  async function set(patch: Partial<Product>) {
+    const { error } = await supabase.from('products').update(patch).eq('id', p.id);
     if (error) return setErr(error.message);
-    onChange?.({ ...p, [field]: value });
+    setErr(''); onChange?.({ ...p, ...patch });
   }
+  const flag = (field: 'no_return' | 'sanh_dieu', value: boolean) => set({ [field]: value });
 
   return (
     <div>
-      <b>{p.name}</b> {!p.active && <span className="warn">(không có trong Cadencia)</span>}
+      {vi === null ? (
+        <div className={admin ? 'click' : ''} onClick={() => admin && setVi(p.name_vi ?? '')}>
+          <b>{pname(p)}</b> {!p.active && <span className="warn">(không có trong Cadencia)</span>}
+          {admin && <span className="mute"> ✎</span>}
+        </div>
+      ) : (
+        <div className="row">
+          <input autoFocus placeholder="Tên tiếng Việt" value={vi} onChange={e => setVi(e.target.value)} />
+          <button style={{ flex: '0 0 auto' }} onClick={() => { set({ name_vi: vi.trim() || null }); setVi(null); }}>Lưu</button>
+        </div>
+      )}
+      {p.name_vi && <div className="mute">{p.name}</div>}
       <div className="mute">{[p.ax_code, p.brand, p.category].filter(Boolean).join(' · ')}</div>
       <div>Giá: <b>{money(p.price) || 'chưa có'}</b></div>
       <div className="mute">Mã vạch: {showCodes(p)}</div>

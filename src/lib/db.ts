@@ -3,12 +3,12 @@ import { supabase } from '../supabase.ts';
 import { unaccent } from './cadencia.ts';
 
 export interface Product {
-  id: string; ax_code: string | null; name: string; brand: string | null; price: number | null; active: boolean;
+  id: string; ax_code: string | null; name: string; name_vi?: string | null; brand: string | null; price: number | null; active: boolean;
   category: string | null; vendor_id: string | null; no_return: boolean; sanh_dieu: boolean;
   vendors?: { code: string; name: string } | null; barcodes?: { code: string }[];
 }
 export interface Shelf { id: string; name: string; qr_code: string; sort_order: number }
-export const PRODUCT_COLS = 'id,ax_code,name,brand,price,active,category,vendor_id,no_return,sanh_dieu,vendors(code,name),barcodes(code)';
+export const PRODUCT_COLS = 'id,ax_code,name,name_vi,brand,price,active,category,vendor_id,no_return,sanh_dieu,vendors(code,name),barcodes(code)';
 
 // Mã đọc từ camera có thể là 12 số (UPC) trong khi file lưu 13 số, hoặc ngược lại.
 export const codeVariants = (c: string) => [...new Set([c, '0' + c, c.replace(/^0/, '')])].filter(x => x.length >= 6);
@@ -62,7 +62,7 @@ export function useTerms(store: string): (Cfg & { reload: () => void }) | null {
   }, [store, n]);
   return state && { ...state, reload: () => setN(x => x + 1) };
 }
-export const BATCH_COLS = 'id,qty,expiry_date,expiry_note,status,shelf_id,shelves(name),products(id,name,ax_code,brand,vendor_id,no_return,sanh_dieu,vendors(code,name))';
+export const BATCH_COLS = 'id,qty,expiry_date,expiry_note,status,shelf_id,shelves(name),products(id,name,name_vi,ax_code,brand,vendor_id,no_return,sanh_dieu,vendors(code,name))';
 
 // Supabase trả tối đa 1000 dòng mỗi lần: lấy theo trang đến hết. Truy vấn phải có order ổn định.
 export async function fetchAll<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
@@ -74,3 +74,6 @@ export async function fetchAll<T>(page: (from: number, to: number) => PromiseLik
     if (!data || data.length < 1000) return out;
   }
 }
+
+// Tên hiển thị: tên tiếng Việt nếu có, không thì tên gốc trong file.
+export const pname = (p: { name: string; name_vi?: string | null }) => p.name_vi?.trim() || p.name;
