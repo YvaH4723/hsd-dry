@@ -3,3 +3,5 @@ import App from './App.tsx';
 import './style.css';
 
 createRoot(document.getElementById('root')!).render(<App />);
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js', { scope: import.meta.env.BASE_URL });
