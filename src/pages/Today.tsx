@@ -21,7 +21,7 @@ export default function Today({ member }: { member: Member }) {
       const data = await fetchAll<any>((a, b) => supabase.from('batches').select(BATCH_COLS).eq('store_id', store).is('deleted_at', null)
         .in('status', ['on_shelf', 'discounted', 'return_notified']).order('expiry_date').order('id').range(a, b));
       setErr('');
-      setLots(data.map(b => ({ ...b, a: actionFor(b, b.products, terms.idx, terms.discountDays) })));
+      setLots(data.map(b => ({ ...b, a: actionFor(b, b.products, terms) })));
     } catch (e: any) { setErr(e.message); }
   }
   useEffect(() => { load(); }, [terms]);

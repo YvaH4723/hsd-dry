@@ -53,7 +53,7 @@ export default function BatchList({ member, shelfId, productId, reloadKey }: { m
                     <span style={{ textAlign: 'right' }} className={d < 0 ? 'over' : d <= 30 ? 'soon' : ''}>{d < 0 ? `Quá ${-d} ngày` : d === 0 ? 'Hết hạn hôm nay' : `Còn ${d} ngày`}</span></div>
                   {b.expiry_note === 'estimated' && <div className="warn">HSD ước tính từ ExpiryDay, kiểm lại trên bao bì</div>}
                   <div className="mute">{b.expiry_note === 'action_date' ? 'Ngày báo trả' : 'HSD'} {fmt(b.expiry_date)} · SL {b.qty}{!productId && !shelfId && b.shelves ? ' · ' + b.shelves.name : ''}</div>
-                  {terms && <ActionLine a={actionFor(b, b.products, terms.idx, terms.discountDays)} status={b.status} />}
+                  {terms && <ActionLine a={actionFor(b, b.products, terms)} status={b.status} />}
                 </div>
                 {edit === b.id && <Editor b={b} member={member} shelves={shelves} done={() => { setEdit(null); load(); }} />}
               </div>

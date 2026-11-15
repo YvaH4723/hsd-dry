@@ -48,13 +48,18 @@ assert.equal(daysLeft('2026-11-20', new Date(2026, 10, 15, 23, 59)), 5);
   const idx = indexTerms([T(null, 'return', 30), T('Twinings', 'return', 90), T('Anlene', 'discount', null), T(null, 'return', 7, false, 'p9')]);
   const P = (brand: string | null, id = 'p1', extra = {}) => ({ id, brand, vendor_id: 'HT', no_return: false, sanh_dieu: false, vendors: { code: 'LS0103' }, ...extra });
   const lot = { expiry_date: '2027-03-31', expiry_note: null };
-  assert.deepEqual(actionFor(lot, P('Twinings'), idx, 45), { kind: 'return', date: '2026-12-31', raw: null });   // nhãn đè NCC
-  assert.equal(actionFor(lot, P('Kewpie'), idx, 45).date, '2027-03-01');                                          // NCC 30 ngày
-  assert.equal(actionFor(lot, P('anlene '), idx, 45).kind, 'discount');                                            // không phân biệt hoa thường
-  assert.equal(actionFor(lot, P('Twinings', 'p9'), idx, 45).date, '2027-03-24');                                  // sản phẩm đè nhãn
-  assert.equal(actionFor(lot, P(null, 'p1', { vendors: { code: 'AFF01' } }), idx, 45).date, '2027-02-14');        // Ân Nam: giảm giá 45
-  assert.equal(actionFor(lot, P(null, 'p1', { vendor_id: 'X' }), idx, 45).label, 'Chưa có điều khoản');
-  assert.equal(actionFor({ expiry_date: '2027-01-01', expiry_note: 'action_date' }, P('Twinings'), idx, 45).date, '2027-01-01');
+  const C0 = { idx, discountDays: 45, returnBuffer: 0 }, C5 = { idx, discountDays: 45, returnBuffer: 5 };
+  assert.deepEqual(actionFor(lot, P('Twinings'), C0), { kind: 'return', date: '2026-12-31', raw: null });   // nhãn đè NCC
+  assert.equal(actionFor(lot, P('Twinings'), C5).date, '2026-12-26');                                       // + 5 ngày an toàn
+  assert.equal(actionFor(lot, P('Kewpie'), C0).date, '2027-03-01');                                         // NCC 30 ngày
+  assert.equal(actionFor(lot, P('anlene '), C5).kind, 'discount');                                          // không phân biệt hoa thường
+  assert.equal(actionFor(lot, P('anlene '), C5).date, '2027-02-14');                                        // giảm giá: không cộng 5
+  assert.equal(actionFor(lot, P('Twinings', 'p9'), C0).date, '2027-03-24');                                 // sản phẩm đè nhãn
+  assert.equal(actionFor(lot, P(null, 'p1', { vendors: { code: 'AFF01' } }), C5).date, '2027-02-14');       // Ân Nam: giảm giá 45
+  assert.equal(actionFor(lot, P(null, 'p1', { vendor_id: 'X' }), C5).label, 'Chưa có điều khoản');
+  assert.equal(actionFor(lot, P(null, 'p1', { vendor_id: null }), C5).label, 'Chưa có NCC');
+  assert.equal(actionFor(lot, P('Twinings', 'p1', { no_return: true }), C5).kind, 'discount');               // cờ không đổi trả
+  assert.equal(actionFor({ expiry_date: '2027-01-01', expiry_note: 'action_date' }, P('Twinings'), C5).date, '2027-01-01');
 }
 console.log('Quy tắc: OK');
 

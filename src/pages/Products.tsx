@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { supabase, canWrite, type Member } from '../supabase.ts';
-import { codeVariants, money, PRODUCT_COLS, searchProducts, type Product } from '../lib/db.ts';
+import { codeVariants, money, PRODUCT_COLS, searchProducts, useTerms, type Product } from '../lib/db.ts';
+import ProductInfo, { showCodes, vendorText } from '../components/ProductInfo.tsx';
 import BatchList from '../components/BatchList.tsx';
 
-// Ẩn bản mã đã thêm số 0 (do app tự tạo cho mã UPC) để danh sách mã gọn.
-const showCodes = (p: Product) => (p.barcodes ?? []).map(b => b.code).filter((c, _, all) => !all.some(o => o !== c && c === '0' + o)).join(', ') || 'Chưa có mã vạch';
 
 export default function Products({ member, onAdd }: { member: Member; onAdd: (p: Product) => void }) {
   const [q, setQ] = useState('');
@@ -12,6 +11,7 @@ export default function Products({ member, onAdd }: { member: Member; onAdd: (p:
   const [total, setTotal] = useState<number | null>(null);
   const [err, setErr] = useState('');
   const [open, setOpen] = useState<Product | null>(null);
+  const terms = useTerms(member.store_id);
 
   useEffect(() => {
     supabase.from('products').select('id', { count: 'exact', head: true }).eq('store_id', member.store_id).eq('active', true)
@@ -27,7 +27,7 @@ export default function Products({ member, onAdd }: { member: Member; onAdd: (p:
             .then(r => ({ data: (r.data ?? []).map((b: any) => b.products).filter(Boolean), error: r.error }))
         : await searchProducts(member.store_id, s);
       setErr(res.error?.message ?? '');
-      setRows((res.data as Product[]) ?? []);
+      setRows((res.data as unknown as Product[]) ?? []);
     }, 300);
     return () => clearTimeout(t);
   }, [q, member.store_id]);
@@ -36,9 +36,7 @@ export default function Products({ member, onAdd }: { member: Member; onAdd: (p:
     <>
       <div className="row"><b style={{ flex: 1 }}>Chi tiết</b><button style={{ flex: '0 0 auto' }} onClick={() => setOpen(null)}>Quay lại</button></div>
       <div className="card">
-        <b>{open.name}</b> {!open.active && <span className="warn">(không có trong Cadencia)</span>}
-        <div className="mute">{[open.ax_code, open.brand, money(open.price)].filter(Boolean).join(' · ')}</div>
-        <div className="mute">{showCodes(open)}</div>
+        <ProductInfo p={open} member={member} terms={terms} onChange={p => { setOpen(p); setRows(r => r.map(x => x.id === p.id ? p : x)); }} />
         {canWrite(member) && <button className="pri" style={{ width: '100%', marginTop: 10 }} onClick={() => onAdd(open)}>+ Thêm lô cho sản phẩm này</button>}
       </div>
       <BatchList member={member} productId={open.id} />
@@ -56,6 +54,7 @@ export default function Products({ member, onAdd }: { member: Member; onAdd: (p:
             <div>{r.name} {!r.active && <span className="warn">(không có trong Cadencia)</span>}</div>
             <div className="mute">{[r.ax_code, r.brand, money(r.price)].filter(Boolean).join(' · ')}</div>
             <div className="mute">{showCodes(r)}</div>
+            <div className="mute">NCC: {vendorText(r)}</div>
           </div>
         ))}
       </div>

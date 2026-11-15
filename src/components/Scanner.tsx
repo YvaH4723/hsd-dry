@@ -77,7 +77,7 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
         <label className="btnlike">Chụp ảnh mã<input type="file" accept="image/*" capture="environment" hidden onChange={e => { photo(e.target.files?.[0]); e.target.value = ''; }} /></label>
       </div>
       <div className="row" style={{ marginTop: 8 }}>
-        <input inputMode="numeric" placeholder="Gõ mã vạch / mã AX" value={typed} onChange={e => setTyped(e.target.value)}
+        <input enterKeyHint="search" placeholder="Gõ mã vạch, mã AX hoặc tên" value={typed} onChange={e => setTyped(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter' && typed.trim()) { cb.current(typed.trim()); setTyped(''); } }} />
         <button style={{ flex: '0 0 auto' }} disabled={!typed.trim()} onClick={() => { cb.current(typed.trim()); setTyped(''); }}>Tìm</button>
       </div>

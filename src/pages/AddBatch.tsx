@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
-import { audit, codeVariants, findByCode, searchProducts, useShelves, type Product } from '../lib/db.ts';
+import { audit, codeVariants, findByCode, money, searchProducts, useShelves, useTerms, type Product } from '../lib/db.ts';
+import { actionFor } from '../lib/action.ts';
+import ProductInfo, { vendorText } from '../components/ProductInfo.tsx';
+import ActionLine from '../components/ActionLine.tsx';
 import { fmt } from '../lib/dates.ts';
 import Scanner from '../components/Scanner.tsx';
 import DateInput from '../components/DateInput.tsx';
@@ -11,6 +14,7 @@ const LAST_SHELF = 'hsd.lastShelf';
 export default function AddBatch({ member, initial, onClose }: { member: Member; initial?: Product; onClose: () => void }) {
   const store = member.store_id;
   const { shelves } = useShelves(store);
+  const terms = useTerms(store);
   const [product, setProduct] = useState<Product | null>(initial ?? null);
   const [shelf, setShelf] = useState(() => localStorage.getItem(LAST_SHELF) ?? '');
   const [qty, setQty] = useState('1');
@@ -28,8 +32,10 @@ export default function AddBatch({ member, initial, onClose }: { member: Member;
     if (sh) { pickShelf(sh.id); setMsg('Kệ: ' + sh.name); return; }
     setMsg('Đang tìm ' + code + '…');
     const p = await findByCode(store, code);
-    if (p) { setProduct(p); setUnknown(''); setMsg(''); }
-    else { setUnknown(code); setProduct(null); setMsg(''); }
+    if (p) { setProduct(p); setUnknown(''); setQ(''); setHits([]); setMsg(''); return; }
+    setProduct(null); setMsg('');
+    if (/^\d{6,14}$/.test(code)) { setUnknown(code); setQ(''); setHits([]); return; }   // mã vạch lạ: gắn vào sản phẩm
+    setUnknown(''); search(code);                                                      // gõ tên / một phần mã AX: chọn trong danh sách
   }
   const pickShelf = (id: string) => { setShelf(id); localStorage.setItem(LAST_SHELF, id); };
 
@@ -37,7 +43,7 @@ export default function AddBatch({ member, initial, onClose }: { member: Member;
     setQ(v);
     if (v.trim().length < 2) return setHits([]);
     const { data } = await searchProducts(store, v, 20);
-    setHits((data as Product[]) ?? []);
+    setHits((data as unknown as Product[]) ?? []);
   }
   // Mã chưa có trong danh mục: chọn đúng sản phẩm để gắn mã, lần sau quét là ra.
   async function attach(p: Product) {
@@ -71,17 +77,26 @@ export default function AddBatch({ member, initial, onClose }: { member: Member;
       <Scanner onCode={onCode} />
       {msg && <p className="mute">{msg}</p>}
 
-      {unknown && (
+      {(unknown || q) && !product && (
         <div className="card">
-          <p className="warn" style={{ marginTop: 0 }}>Không thấy mã <b>{unknown}</b> trong danh mục. Tìm sản phẩm để gắn mã này:</p>
-          <input placeholder="Gõ tên sản phẩm" value={q} onChange={e => search(e.target.value)} />
-          {hits.map(p => <div className="item click" key={p.id} onClick={() => attach(p)}>{p.name}<div className="mute">{p.ax_code} · {p.brand}</div></div>)}
+          {unknown
+            ? <p className="warn" style={{ marginTop: 0 }}>Không thấy mã <b>{unknown}</b> trong danh mục. Tìm sản phẩm để gắn mã này:</p>
+            : <p className="mute" style={{ marginTop: 0 }}>Chọn sản phẩm:</p>}
+          <input placeholder="Gõ tên sản phẩm hoặc mã AX" value={q} onChange={e => search(e.target.value)} />
+          {q.trim().length >= 2 && !hits.length && <p className="mute">Không tìm thấy.</p>}
+          {hits.map(p => (
+            <div className="item click" key={p.id} onClick={() => unknown ? attach(p) : (setProduct(p), setQ(''), setHits([]))}>
+              {p.name}
+              <div className="mute">{[p.ax_code, p.brand, money(p.price)].filter(Boolean).join(' · ')}</div>
+              <div className="mute">NCC: {vendorText(p)}</div>
+            </div>
+          ))}
         </div>
       )}
 
       <div className="card">
         <label style={{ marginTop: 0 }}>Sản phẩm</label>
-        <div>{product ? <><b>{product.name}</b><div className="mute">{product.ax_code} · {product.brand}</div></> : <span className="mute">Quét hoặc gõ mã ở trên</span>}</div>
+        {product ? <ProductInfo p={product} member={member} terms={terms} onChange={setProduct} /> : <span className="mute">Quét mã vạch, hoặc gõ mã vạch / mã AX / tên sản phẩm ở trên</span>}
         <label>Kệ</label>
         <select value={shelf} onChange={e => pickShelf(e.target.value)}>
           <option value="">— Chưa chọn kệ —</option>
@@ -91,6 +106,7 @@ export default function AddBatch({ member, initial, onClose }: { member: Member;
         <input inputMode="numeric" value={qty} onChange={e => setQty(e.target.value.replace(/\D/g, ''))} />
         <label>Hạn sử dụng</label>
         <DateInput key={dateKey} onChange={setDate} />
+        {product && date.exp && terms && <ActionLine a={actionFor({ expiry_date: date.exp, expiry_note: null }, product, terms)} status="on_shelf" />}
         <button className="pri" style={{ width: '100%', marginTop: 12 }} disabled={busy || !product || !date.exp} onClick={save}>Lưu lô</button>
       </div>
       {saved.length > 0 && <div className="card"><span className="mute">Vừa lưu</span>{saved.map((s, i) => <div className="item" key={i}>{s}</div>)}</div>}

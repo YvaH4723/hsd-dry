@@ -10,6 +10,7 @@ import AddBatch from './pages/AddBatch.tsx';
 import BatchList from './components/BatchList.tsx';
 import Today from './pages/Today.tsx';
 import Terms from './pages/Terms.tsx';
+import Settings from './pages/Settings.tsx';
 
 type Tab = 'today' | 'expiry' | 'products' | 'shelves' | 'more';
 
@@ -65,14 +66,15 @@ export default function App() {
 }
 
 function More({ member }: { member: Member }) {
-  const [sub, setSub] = useState<'terms' | 'import'>('terms');
+  const [sub, setSub] = useState<'terms' | 'import' | 'settings'>('terms');
   return (
     <>
       <div className="chips">
         <button className={sub === 'terms' ? 'on' : ''} onClick={() => setSub('terms')}>Điều khoản đổi trả</button>
         {member.role === 'admin' && <button className={sub === 'import' ? 'on' : ''} onClick={() => setSub('import')}>Nhập file</button>}
+        {member.role === 'admin' && <button className={sub === 'settings' ? 'on' : ''} onClick={() => setSub('settings')}>Cài đặt</button>}
       </div>
-      {sub === 'terms' ? <Terms member={member} /> : <Import member={member} />}
+      {sub === 'terms' ? <Terms member={member} /> : sub === 'import' ? <Import member={member} /> : <Settings member={member} />}
     </>
   );
 }

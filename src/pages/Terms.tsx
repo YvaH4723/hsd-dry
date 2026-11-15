@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
 import { unaccent } from '../lib/cadencia.ts';
-import { fetchAll } from '../lib/db.ts';
+import { fetchAll, settingsOf } from '../lib/db.ts';
 
 interface T { id: string; vendor_id: string; brand: string | null; product_id: string | null; action: 'return' | 'discount'; days: number | null; raw_text: string | null; needs_review: boolean; source: string }
 interface V { id: string; code: string; name: string }
 
-const describe = (t?: T) => !t ? 'Chưa có điều khoản (tạm giảm giá)' : t.needs_review || (t.action === 'return' && !t.days) ? 'Cần chọn: ' + (t.raw_text ?? '') : t.action === 'return' ? `Báo trả trước ${t.days} ngày` : 'Không đổi trả: dán giảm giá';
+type Mode = 'all' | 'missing' | 'review';
 
 // Tra điều khoản theo tên / mã NCC / nhãn; quản trị viên sửa điều khoản NCC và thêm luật theo nhãn hàng.
 export default function Terms({ member }: { member: Member }) {
@@ -14,21 +14,28 @@ export default function Terms({ member }: { member: Member }) {
   const [vendors, setVendors] = useState<V[]>([]);
   const [terms, setTerms] = useState<T[]>([]);
   const [q, setQ] = useState('');
-  const [onlyReview, setOnlyReview] = useState(false);
+  const [mode, setMode] = useState<Mode>('all');
+  const [cfg, setCfg] = useState(settingsOf(null));
   const [open, setOpen] = useState<string | null>(null);
   const [err, setErr] = useState('');
 
   const load = () => Promise.all([
     fetchAll<V>((a, b) => supabase.from('vendors').select('id,code,name').eq('store_id', store).is('deleted_at', null).order('code').range(a, b)),
     fetchAll<T>((a, b) => supabase.from('terms').select('id,vendor_id,brand,product_id,action,days,raw_text,needs_review,source').eq('store_id', store).is('deleted_at', null).order('id').range(a, b)),
-  ]).then(([v, t]) => { setVendors(v); setTerms(t); setErr(''); }, e => setErr(e.message));
+    supabase.from('stores').select('*').eq('id', store).single(),
+  ]).then(([v, t, s]) => { setVendors(v); setTerms(t); setCfg(settingsOf(s.data)); setErr(''); }, e => setErr(e.message));
   useEffect(() => { load(); }, [store]);
 
   const main = (v: string) => terms.find(t => t.vendor_id === v && !t.brand && !t.product_id);
+  const describe = (t?: T) => !t ? `Chưa có điều khoản: tạm dán giảm giá trước HSD ${cfg.discountDays} ngày`
+    : t.needs_review || (t.action === 'return' && !t.days) ? 'Cần chọn: ' + (t.raw_text ?? '')
+    : t.action === 'return' ? `Báo trả trước HSD ${t.days} ngày + ${cfg.returnBuffer} ngày an toàn` : `Không đổi trả: dán giảm giá trước HSD ${cfg.discountDays} ngày`;
+  const missing = vendors.filter(v => !main(v.id)).length;
   const s = unaccent(q.trim());
   const shown = vendors.filter(v => {
     const m = main(v.id);
-    if (onlyReview && !(m?.needs_review)) return false;
+    if (mode === 'review' && !m?.needs_review) return false;
+    if (mode === 'missing' && m) return false;
     if (!s) return true;
     const brands = terms.filter(t => t.vendor_id === v.id && t.brand).map(t => t.brand).join(' ');
     return unaccent(`${v.code} ${v.name} ${brands}`).includes(s);
@@ -38,8 +45,9 @@ export default function Terms({ member }: { member: Member }) {
     <>
       <input placeholder="Tìm tên NCC, mã NCC hoặc nhãn hàng" value={q} onChange={e => setQ(e.target.value)} />
       <div className="chips">
-        <button className={!onlyReview ? 'on' : ''} onClick={() => setOnlyReview(false)}>Tất cả ({vendors.length})</button>
-        <button className={onlyReview ? 'on' : ''} onClick={() => setOnlyReview(true)}>Cần chọn tay ({terms.filter(t => t.needs_review && !t.brand && !t.product_id).length})</button>
+        <button className={mode === 'all' ? 'on' : ''} onClick={() => setMode('all')}>Tất cả ({vendors.length})</button>
+        <button className={mode === 'missing' ? 'on' : ''} onClick={() => setMode('missing')}>Chưa có điều khoản ({missing})</button>
+        <button className={mode === 'review' ? 'on' : ''} onClick={() => setMode('review')}>Cần chọn tay ({terms.filter(t => t.needs_review && !t.brand && !t.product_id).length})</button>
       </div>
       {err && <p className="bad">{err}</p>}
       {!vendors.length && <p className="mute">Chưa có NCC. Vào Nhập file → Nhập điều khoản (Contact List).</p>}
@@ -48,10 +56,10 @@ export default function Terms({ member }: { member: Member }) {
           <div className="item" key={v.id}>
             <div className="click" onClick={() => setOpen(open === v.id ? null : v.id)}>
               <div>{v.name} <span className="mute">· {v.code}</span></div>
-              <div className={main(v.id)?.needs_review ? 'warn' : 'mute'}>{describe(main(v.id))}</div>
+              <div className={!main(v.id) || main(v.id)?.needs_review ? 'warn' : 'mute'}>{describe(main(v.id))}</div>
               {terms.filter(t => t.vendor_id === v.id && t.brand).map(t => <div className="mute" key={t.id}>• {t.brand}: {describe(t)}</div>)}
             </div>
-            {open === v.id && admin && <Editor store={store} vendor={v} main={main(v.id)} done={() => { setOpen(null); load(); }} />}
+            {open === v.id && admin && <TermEditor store={store} vendor={v} main={main(v.id)} done={() => { setOpen(null); load(); }} />}
           </div>
         ))}
         {shown.length > 100 && <p className="mute">Còn {shown.length - 100} NCC, gõ thêm để lọc.</p>}
@@ -60,7 +68,8 @@ export default function Terms({ member }: { member: Member }) {
   );
 }
 
-function Editor({ store, vendor, main, done }: { store: string; vendor: V; main?: T; done: () => void }) {
+// Sửa điều khoản của một NCC (cả NCC hoặc riêng một nhãn hàng). Dùng ở trang Điều khoản và ngay trên thẻ sản phẩm khi quét.
+export function TermEditor({ store, vendor, main, done }: { store: string; vendor: V; main?: Pick<T, 'action' | 'days' | 'raw_text'>; done: () => void }) {
   const [brand, setBrand] = useState('');
   const [action, setAction] = useState<'return' | 'discount'>(main?.action ?? 'return');
   const [days, setDays] = useState(main?.days ? String(main.days) : '');
