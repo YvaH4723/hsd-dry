@@ -87,6 +87,7 @@ function Editor({ b, member, shelves, done }: { b: Batch; member: Member; shelve
       <div className="row" style={{ marginTop: 10 }}>
         <button className="pri" onClick={() => upd({ qty: parseInt(qty) || 0, shelf_id: shelf || null, expiry_date: exp, ...(exp !== b.expiry_date ? { expiry_note: null } : {}) }, 'edit')}>Lưu</button>
         <button onClick={() => upd({ status: 'sold_out' }, 'sold_out')}>Bán hết</button>
+        {b.status !== 'on_shelf' && <button onClick={() => upd({ status: 'on_shelf' }, 'undo')}>Hoàn tác {b.status === 'discounted' ? 'giảm giá' : 'báo trả'}</button>}
         {canDelete(member) && <button className="bad" onClick={() => confirm('Xóa lô này?') && upd({ deleted_at: new Date().toISOString() }, 'delete')}>Xóa</button>}
       </div>
       {msg && <p className="bad">{msg}</p>}

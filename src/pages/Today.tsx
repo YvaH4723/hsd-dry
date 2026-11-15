@@ -36,11 +36,12 @@ export default function Today({ member }: { member: Member }) {
   if (!lots) return <p className="mute">{err || 'Đang tải…'}</p>;
   const open = lots.filter(l => l.status === 'on_shelf');
   const byDate = (x: Lot, y: Lot) => x.a.date.localeCompare(y.a.date);
-  const groups: [string, Lot[], 'return' | 'discount' | null][] = [
+  const groups: [string, Lot[], 'return' | 'discount' | 'pickup' | null][] = [
     ['Quá HSD', lots.filter(l => l.expiry_note !== 'action_date' && daysLeft(l.expiry_date) < 0), null],
     ['Quá ngày báo trả', open.filter(l => l.a.kind !== 'discount' && daysLeft(l.a.date) < 0).sort(byDate), 'return'],
     [`Báo trả trong ${SOON} ngày`, open.filter(l => l.a.kind !== 'discount' && daysLeft(l.a.date) >= 0 && daysLeft(l.a.date) <= SOON).sort(byDate), 'return'],
     ['Cần dán giảm giá', open.filter(l => l.a.kind === 'discount' && daysLeft(l.a.date) <= SOON).sort(byDate), 'discount'],
+    ['Đã báo trả, chờ NCC lấy', lots.filter(l => l.status === 'return_notified').sort(byDate), 'pickup'],
   ];
 
   return (
@@ -55,7 +56,13 @@ export default function Today({ member }: { member: Member }) {
               <div>{pname(l.products)}</div>
               <div className="mute">{l.expiry_note === 'action_date' ? 'Chưa có HSD' : `HSD ${fmt(l.expiry_date)}${l.expiry_note ? ' (ước tính)' : ''}`} · SL {l.qty}{l.shelves ? ' · ' + l.shelves.name : ''}</div>
               <ActionLine a={l.a} status={l.status} />
-              {kind && canWrite(member) && (
+              {kind === 'pickup' && canWrite(member) && (
+                <div className="row" style={{ marginTop: 6 }}>
+                  <button className="pri" onClick={() => mark(l, 'returned')}>NCC đã lấy</button>
+                  <button onClick={() => mark(l, 'on_shelf')}>Hoàn tác</button>
+                </div>
+              )}
+              {kind && kind !== 'pickup' && canWrite(member) && (
                 <div className="row" style={{ marginTop: 6 }}>
                   {(kind === 'return' || l.a.kind === 'reminder') && <button onClick={() => mark(l, 'return_notified')}>Đã báo trả</button>}
                   {(kind === 'discount' || l.a.kind === 'reminder') && <button onClick={() => mark(l, 'discounted')}>Đã dán giảm giá</button>}
