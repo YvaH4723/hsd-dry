@@ -18,3 +18,9 @@ label{display:block;margin:8px 0 4px;color:var(--mute);font-size:14px}
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}
 .stats div{background:#0e1626;border-radius:10px;padding:10px;text-align:center}.stats b{display:block;font-size:22px}
 code{background:#0e1626;padding:2px 6px;border-radius:6px;font-size:13px;word-break:break-all}
+.btnlike{display:flex;align-items:center;justify-content:center;margin:0;border-radius:10px;padding:11px 14px;background:#1e293b;color:var(--ink);font-size:16px}
+select{font:inherit;width:100%;padding:11px 12px;border-radius:10px;border:1px solid var(--line);background:#0e1626;color:var(--ink)}
+.over{color:var(--bad);font-weight:600}.soon{color:var(--warn)}
+.fab{position:fixed;right:16px;bottom:calc(76px + env(safe-area-inset-bottom));border-radius:28px;padding:14px 20px;box-shadow:0 4px 14px #0008}
+.chips{display:flex;gap:6px;overflow-x:auto;margin:6px 0}.chips button{flex:0 0 auto;padding:7px 12px;font-size:14px}.chips button.on{background:var(--acc);color:#fff}
+.click{cursor:pointer}

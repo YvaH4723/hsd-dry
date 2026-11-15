@@ -6,4 +6,6 @@ export const supabase = createClient(
   'sb_publishable_AZaUVmXoX8pGMWepO98L7g_-g4Td9W0',
 );
 
-export interface Member { store_id: string; role: 'admin' | 'staff' | 'viewer'; name: string }
+export interface Member { store_id: string; role: 'admin' | 'staff' | 'viewer'; name: string; can_write: boolean; can_delete: boolean }
+export const canWrite = (m: Member) => m.role === 'admin' || (m.role !== 'viewer' && m.can_write);
+export const canDelete = (m: Member) => m.role === 'admin' || (m.role !== 'viewer' && m.can_delete);

@@ -1,15 +1,17 @@
 import { useEffect, useState } from 'react';
-import { supabase, type Member } from '../supabase.ts';
-import { unaccent } from '../lib/cadencia.ts';
+import { supabase, canWrite, type Member } from '../supabase.ts';
+import { codeVariants, money, PRODUCT_COLS, searchProducts, type Product } from '../lib/db.ts';
+import BatchList from '../components/BatchList.tsx';
 
-interface Row { id: string; ax_code: string | null; name: string; brand: string | null; price: number | null; active: boolean; barcodes: { code: string }[] }
-const COLS = 'id,ax_code,name,brand,price,active,barcodes(code)';
+// Ẩn bản mã đã thêm số 0 (do app tự tạo cho mã UPC) để danh sách mã gọn.
+const showCodes = (p: Product) => (p.barcodes ?? []).map(b => b.code).filter((c, _, all) => !all.some(o => o !== c && c === '0' + o)).join(', ') || 'Chưa có mã vạch';
 
-export default function Products({ member }: { member: Member }) {
+export default function Products({ member, onAdd }: { member: Member; onAdd: (p: Product) => void }) {
   const [q, setQ] = useState('');
-  const [rows, setRows] = useState<Row[]>([]);
+  const [rows, setRows] = useState<Product[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [err, setErr] = useState('');
+  const [open, setOpen] = useState<Product | null>(null);
 
   useEffect(() => {
     supabase.from('products').select('id', { count: 'exact', head: true }).eq('store_id', member.store_id).eq('active', true)
@@ -17,35 +19,43 @@ export default function Products({ member }: { member: Member }) {
   }, [member.store_id]);
 
   useEffect(() => {
-    const s = q.trim().replace(/[,()*%]/g, '');
+    const s = q.trim();
     if (s.length < 2) { setRows([]); return; }
     const t = setTimeout(async () => {
-      let res;
-      if (/^\d{6,}$/.test(s)) {
-        const { data, error } = await supabase.from('barcodes').select(`products(${COLS})`).eq('store_id', member.store_id).eq('code', s).is('deleted_at', null);
-        res = { data: (data ?? []).map((b: any) => b.products).filter(Boolean), error };
-      } else {
-        const words = unaccent(s).split(/\s+/).join('*');
-        res = await supabase.from('products').select(COLS).eq('store_id', member.store_id).is('deleted_at', null)
-          .or(`name_search.ilike.*${words}*,ax_code.ilike.${s}*`).order('active', { ascending: false }).limit(50);
-      }
+      const res = /^\d{6,14}$/.test(s)
+        ? await supabase.from('barcodes').select(`products(${PRODUCT_COLS})`).eq('store_id', member.store_id).in('code', codeVariants(s)).is('deleted_at', null)
+            .then(r => ({ data: (r.data ?? []).map((b: any) => b.products).filter(Boolean), error: r.error }))
+        : await searchProducts(member.store_id, s);
       setErr(res.error?.message ?? '');
-      setRows((res.data as Row[]) ?? []);
+      setRows((res.data as Product[]) ?? []);
     }, 300);
     return () => clearTimeout(t);
   }, [q, member.store_id]);
 
+  if (open) return (
+    <>
+      <div className="row"><b style={{ flex: 1 }}>Chi tiết</b><button style={{ flex: '0 0 auto' }} onClick={() => setOpen(null)}>Quay lại</button></div>
+      <div className="card">
+        <b>{open.name}</b> {!open.active && <span className="warn">(đã ẩn)</span>}
+        <div className="mute">{[open.ax_code, open.brand, money(open.price)].filter(Boolean).join(' · ')}</div>
+        <div className="mute">{showCodes(open)}</div>
+        {canWrite(member) && <button className="pri" style={{ width: '100%', marginTop: 10 }} onClick={() => onAdd(open)}>+ Thêm lô cho sản phẩm này</button>}
+      </div>
+      <BatchList member={member} productId={open.id} />
+    </>
+  );
+
   return (
     <>
-      <input placeholder="Tìm tên, mã AX hoặc mã vạch" value={q} onChange={e => setQ(e.target.value)} autoFocus />
+      <input placeholder="Tìm tên, mã AX hoặc mã vạch" value={q} onChange={e => setQ(e.target.value)} />
       <p className="mute">{total == null ? '' : `${total.toLocaleString('vi-VN')} sản phẩm đang bán`}{total === 0 && member.role === 'admin' ? ' — vào tab Nhập file để nhập danh mục Cadencia.' : ''}</p>
       {err && <p className="bad">{err}</p>}
       <div className="card" hidden={!rows.length}>
         {rows.map(r => (
-          <div className="item" key={r.id}>
+          <div className="item click" key={r.id} onClick={() => setOpen(r)}>
             <div>{r.name} {!r.active && <span className="warn">(đã ẩn)</span>}</div>
-            <div className="mute">{[r.ax_code, r.brand, r.price != null && Number(r.price).toLocaleString('vi-VN') + 'đ'].filter(Boolean).join(' · ')}</div>
-            <div className="mute">{r.barcodes.map(b => b.code).filter((c, _, all) => !all.some(o => o !== c && c === '0' + o)).join(', ') || 'Chưa có mã vạch'}</div>
+            <div className="mute">{[r.ax_code, r.brand, money(r.price)].filter(Boolean).join(' · ')}</div>
+            <div className="mute">{showCodes(r)}</div>
           </div>
         ))}
       </div>

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseTerm, resolveVendors } from '../src/lib/terms.ts';
 import { barcodesOf, diffCatalog, mapRow, unaccent } from '../src/lib/cadencia.ts';
+import { addShelfLife, daysLeft, parseDmy } from '../src/lib/dates.ts';
 
 // Quy tắc nghiệp vụ trong kế hoạch
 const t = (v: unknown) => { const r = parseTerm(v); return r.review ? 'review' : `${r.action}:${r.days}`; };
@@ -31,6 +32,13 @@ const hs = resolveVendors([
 assert.equal(hs.length, 1); assert.equal(hs[0].review, true); assert.equal(hs[0].rows.length, 2);
 const ff = resolveVendors([{ code: 'X 1', name: 'A', category: 'DHP', term: 'Yes - 60 days' }, { code: 'X1', name: 'A', category: 'Salty', term: 60 }]);
 assert.equal(ff[0].review, false); assert.equal(ff[0].days, 60);
+assert.equal(parseDmy('300628'), '2028-06-30');
+assert.equal(parseDmy('30/06/2028'), '2028-06-30');
+assert.equal(parseDmy('310228'), null);
+assert.equal(addShelfLife('2026-01-31', 1, 'month'), '2026-02-28');
+assert.equal(addShelfLife('2026-03-31', 12, 'month'), '2027-03-31');
+assert.equal(addShelfLife('2026-11-15', 45, 'day'), '2026-12-30');
+assert.equal(daysLeft('2026-11-20', new Date(2026, 10, 15, 23, 59)), 5);
 console.log('Quy tắc: OK');
 
 const [cadPath, conPath] = process.argv.slice(2);
