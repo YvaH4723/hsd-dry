@@ -33,7 +33,7 @@ export function mapRow(r: Record<string, unknown>): CatalogItem {
   };
 }
 
-export interface Existing { ax: string; name: string; price: number | null; vendorCode: string; active: boolean; keep?: boolean }
+export interface Existing { id?: string; ax: string; name: string; price: number | null; vendorCode: string; active: boolean; keep?: boolean }
 export interface Preview {
   added: CatalogItem[]; updated: { item: CatalogItem; changes: string[] }[]; unchanged: number;
   hidden: Existing[]; errors: { row: number; reason: string }[];

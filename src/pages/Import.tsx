@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
-import { diffCatalog, type Existing, type Preview } from '../lib/cadencia.ts';
+import { diffCatalog, mapRow, type Existing, type Preview } from '../lib/cadencia.ts';
+
+const mapAll = (rows: Record<string, unknown>[]) => rows.map(mapRow).filter(i => i.ax);
 import { resolveVendors, type VendorTerm } from '../lib/terms.ts';
+import { fetchAll } from '../lib/db.ts';
 
 const chunks = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 
@@ -19,10 +22,10 @@ export async function readRows(file: File, col = 'AX Code', what = 'GTB Cadencia
 async function loadExisting(store: string): Promise<Existing[]> {
   const out: Existing[] = [];
   for (let i = 0; ; i += 1000) {
-    const { data, error } = await supabase.from('products').select('ax_code,name,price,active,category,vendors(code)')
+    const { data, error } = await supabase.from('products').select('id,ax_code,name,price,active,category,vendors(code)')
       .eq('store_id', store).not('ax_code', 'is', null).is('deleted_at', null).order('ax_code').range(i, i + 999);
     if (error) throw error;
-    out.push(...data.map((p: any) => ({ ax: p.ax_code, name: p.name, price: p.price == null ? null : Number(p.price), vendorCode: p.vendors?.code ?? '', active: p.active, keep: p.category === 'Từ ExpiryDay' })));
+    out.push(...data.map((p: any) => ({ id: p.id, ax: p.ax_code, name: p.name, price: p.price == null ? null : Number(p.price), vendorCode: p.vendors?.code ?? '', active: p.active, keep: p.category === 'Từ ExpiryDay' })));
     if (data.length < 1000) return out;
   }
 }
@@ -31,6 +34,7 @@ export default function Import({ member }: { member: Member }) {
   const store = member.store_id;
   const [rows, setRows] = useState<Record<string, unknown>[]>([]);
   const [prev, setPrev] = useState<Preview | null>(null);
+  const [ids, setIds] = useState<Map<string, string>>(new Map());
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -40,7 +44,9 @@ export default function Import({ member }: { member: Member }) {
     try {
       const r = await readRows(f);
       setMsg('Đang so với danh mục hiện có…');
-      setRows(r); setPrev(diffCatalog(r, await loadExisting(store))); setMsg('');
+      const ex = await loadExisting(store);
+      setIds(new Map(ex.map(e => [e.ax, e.id!])));
+      setRows(r); setPrev(diffCatalog(r, ex)); setMsg('');
     } catch (e: any) { setMsg('Lỗi: ' + e.message); }
     setBusy(false);
   }
@@ -64,13 +70,13 @@ export default function Import({ member }: { member: Member }) {
         setMsg(`Đang ghi sản phẩm ${Math.min((n + 1) * 500, write.length)}/${write.length}…`);
         const { data, error } = await supabase.from('products').upsert(c.map(i => ({
           store_id: store, ax_code: i.ax, name: i.name, name_search: i.nameSearch, brand: i.brand || null,
-          vendor_id: vid.get(i.vendorCode) ?? null, price: i.price, dept_group: i.group, category: i.category || null, active: true,
+          vendor_id: vid.get(i.vendorCode) ?? null, price: i.price, dept_group: i.group, category: i.category || null, active: true, deleted_at: null,
         })), { onConflict: 'store_id,ax_code' }).select('id,ax_code');
         if (error) throw error;
         data.forEach(p => pid.set(p.ax_code, p.id));
       }
-      // Mã vạch chỉ thêm cho sản phẩm mới; mã nhân viên đã gắn cho sản phẩm cũ giữ nguyên.
-      const bc = prev.added.flatMap(i => i.barcodes.map(code => ({ store_id: store, product_id: pid.get(i.ax)!, code })));
+      // Thêm mọi mã vạch trong file còn thiếu (kể cả lần trước ghi dở). Mã đã có giữ nguyên, kể cả mã nhân viên gắn.
+      const bc = mapAll(rows).flatMap(i => { const id = pid.get(i.ax) ?? ids.get(i.ax); return id ? i.barcodes.map(code => ({ store_id: store, product_id: id, code })) : []; });
       for (const [n, c] of chunks(bc, 1000).entries()) {
         setMsg(`Đang ghi mã vạch ${Math.min((n + 1) * 1000, bc.length)}/${bc.length}…`);
         const { error } = await supabase.from('barcodes').upsert(c, { onConflict: 'store_id,code', ignoreDuplicates: true });
@@ -111,7 +117,7 @@ export default function Import({ member }: { member: Member }) {
           {prev.updated.slice(0, 10).map(u => <div className="item mute" key={u.item.ax}>{u.item.ax} {u.item.name}: đổi {u.changes.join(', ')}</div>)}
           {prev.hidden.slice(0, 10).map(h => <div className="item warn" key={h.ax}>Ẩn: {h.ax} {h.name}</div>)}
           {prev.errors.slice(0, 20).map(e => <div className="item bad" key={e.row}>Dòng {e.row}: {e.reason}</div>)}
-          <button className="pri" style={{ width: '100%', marginTop: 12 }} disabled={busy || !(prev.added.length + prev.updated.length + prev.hidden.length)} onClick={apply}>
+          <button className="pri" style={{ width: '100%', marginTop: 12 }} disabled={busy} onClick={apply}>
             Xác nhận ghi
           </button>
         </div>
@@ -149,9 +155,8 @@ function ContactImport({ store }: { store: string }) {
         if (error) throw error;
         data.forEach(v => vid.set(v.code, v.id));
       }
-      const { data: old, error: e1 } = await supabase.from('terms').select('id,vendor_id,source').eq('store_id', store)
-        .is('brand', null).is('product_id', null).is('deleted_at', null).limit(5000);
-      if (e1) throw e1;
+      const old = await fetchAll<{ id: string; vendor_id: string; source: string }>((a, b) => supabase.from('terms').select('id,vendor_id,source').eq('store_id', store)
+        .is('brand', null).is('product_id', null).is('deleted_at', null).order('id').range(a, b));
       const cur = new Map(old.map(t => [t.vendor_id, t]));
       const rows = vt.map(v => ({ store_id: store, vendor_id: vid.get(v.code)!, action: v.action, days: v.days, raw_text: v.raw, needs_review: v.review, source: 'file' }));
       const kept = rows.filter(r => cur.get(r.vendor_id)?.source === 'manual').length;

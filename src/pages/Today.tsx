@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase, canWrite, type Member } from '../supabase.ts';
-import { audit, BATCH_COLS, useTerms } from '../lib/db.ts';
+import { audit, BATCH_COLS, fetchAll, useTerms } from '../lib/db.ts';
 import { actionFor, type Action, type LotProduct } from '../lib/action.ts';
 import { daysLeft, fmt } from '../lib/dates.ts';
 import ActionLine from '../components/ActionLine.tsx';
@@ -17,10 +17,12 @@ export default function Today({ member }: { member: Member }) {
 
   async function load() {
     if (!terms) return;
-    const { data, error } = await supabase.from('batches').select(BATCH_COLS).eq('store_id', store).is('deleted_at', null)
-      .in('status', ['on_shelf', 'discounted', 'return_notified']).order('expiry_date').limit(2000);
-    setErr(error?.message ?? '');
-    setLots(((data as any[]) ?? []).map(b => ({ ...b, a: actionFor(b, b.products, terms.idx, terms.discountDays) })));
+    try {
+      const data = await fetchAll<any>((a, b) => supabase.from('batches').select(BATCH_COLS).eq('store_id', store).is('deleted_at', null)
+        .in('status', ['on_shelf', 'discounted', 'return_notified']).order('expiry_date').order('id').range(a, b));
+      setErr('');
+      setLots(data.map(b => ({ ...b, a: actionFor(b, b.products, terms.idx, terms.discountDays) })));
+    } catch (e: any) { setErr(e.message); }
   }
   useEffect(() => { load(); }, [terms]);
 
@@ -54,9 +56,10 @@ export default function Today({ member }: { member: Member }) {
               <div className="mute">{l.expiry_note === 'action_date' ? 'Chưa có HSD' : `HSD ${fmt(l.expiry_date)}${l.expiry_note ? ' (ước tính)' : ''}`} · SL {l.qty}{l.shelves ? ' · ' + l.shelves.name : ''}</div>
               <ActionLine a={l.a} status={l.status} />
               {kind && canWrite(member) && (
-                <button style={{ marginTop: 6 }} onClick={() => mark(l, kind === 'return' ? 'return_notified' : 'discounted')}>
-                  {kind === 'return' ? 'Đã báo trả' : 'Đã dán giảm giá'}
-                </button>
+                <div className="row" style={{ marginTop: 6 }}>
+                  {(kind === 'return' || l.a.kind === 'reminder') && <button onClick={() => mark(l, 'return_notified')}>Đã báo trả</button>}
+                  {(kind === 'discount' || l.a.kind === 'reminder') && <button onClick={() => mark(l, 'discounted')}>Đã dán giảm giá</button>}
+                </div>
               )}
             </div>
           ))}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase, canDelete, canWrite, type Member } from '../supabase.ts';
-import { audit, BATCH_COLS, useShelves, useTerms } from '../lib/db.ts';
+import { audit, BATCH_COLS, fetchAll, useShelves, useTerms } from '../lib/db.ts';
 import { actionFor, type LotProduct } from '../lib/action.ts';
 import ActionLine from './ActionLine.tsx';
 import { daysLeft, fmt } from '../lib/dates.ts';
@@ -20,12 +20,16 @@ export default function BatchList({ member, shelfId, productId, reloadKey }: { m
   const terms = useTerms(store);
 
   async function load() {
-    let q = supabase.from('batches').select(BATCH_COLS)
-      .eq('store_id', store).is('deleted_at', null).in('status', ['on_shelf', 'discounted', 'return_notified']).order('expiry_date').limit(500);
-    if (shelfId) q = q.eq('shelf_id', shelfId);
-    if (productId) q = q.eq('product_id', productId);
-    const { data, error } = await q;
-    setErr(error?.message ?? ''); setRows((data as any) ?? []);
+    try {
+      const data = await fetchAll<any>((a, b) => {
+        let q = supabase.from('batches').select(BATCH_COLS)
+          .eq('store_id', store).is('deleted_at', null).in('status', ['on_shelf', 'discounted', 'return_notified']);
+        if (shelfId) q = q.eq('shelf_id', shelfId);
+        if (productId) q = q.eq('product_id', productId);
+        return q.order('expiry_date').order('id').range(a, b);
+      });
+      setErr(''); setRows(data);
+    } catch (e: any) { setErr(e.message); }
   }
   useEffect(() => { load(); }, [store, shelfId, productId, reloadKey]);
 
@@ -79,9 +83,9 @@ function Editor({ b, member, shelves, done }: { b: Batch; member: Member; shelve
       <label>Số lượng</label><input inputMode="numeric" value={qty} onChange={e => setQty(e.target.value.replace(/\D/g, ''))} />
       <label>Kệ</label>
       <select value={shelf} onChange={e => setShelf(e.target.value)}><option value="">— Chưa chọn kệ —</option>{shelves.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}</select>
-      <label>Hạn sử dụng</label><DateInput initial={b.expiry_date} onChange={v => v.exp && setExp(v.exp)} />
+      <label>{b.expiry_note === 'action_date' ? 'HSD thật (đang lưu ngày nhắc, sửa sẽ thay bằng HSD)' : b.expiry_note === 'estimated' ? 'HSD (đang là ước tính)' : 'Hạn sử dụng'}</label><DateInput initial={b.expiry_date} onChange={v => v.exp && setExp(v.exp)} />
       <div className="row" style={{ marginTop: 10 }}>
-        <button className="pri" onClick={() => upd({ qty: parseInt(qty) || 0, shelf_id: shelf || null, expiry_date: exp, ...(exp !== b.expiry_date || b.expiry_note ? { expiry_note: null } : {}) }, 'edit')}>Lưu</button>
+        <button className="pri" onClick={() => upd({ qty: parseInt(qty) || 0, shelf_id: shelf || null, expiry_date: exp, ...(exp !== b.expiry_date ? { expiry_note: null } : {}) }, 'edit')}>Lưu</button>
         <button onClick={() => upd({ status: 'sold_out' }, 'sold_out')}>Bán hết</button>
         {canDelete(member) && <button className="bad" onClick={() => confirm('Xóa lô này?') && upd({ deleted_at: new Date().toISOString() }, 'delete')}>Xóa</button>}
       </div>

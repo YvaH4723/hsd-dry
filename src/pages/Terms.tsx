@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
 import { unaccent } from '../lib/cadencia.ts';
+import { fetchAll } from '../lib/db.ts';
 
 interface T { id: string; vendor_id: string; brand: string | null; product_id: string | null; action: 'return' | 'discount'; days: number | null; raw_text: string | null; needs_review: boolean; source: string }
 interface V { id: string; code: string; name: string }
@@ -18,9 +19,9 @@ export default function Terms({ member }: { member: Member }) {
   const [err, setErr] = useState('');
 
   const load = () => Promise.all([
-    supabase.from('vendors').select('id,code,name').eq('store_id', store).is('deleted_at', null).order('code').limit(5000),
-    supabase.from('terms').select('id,vendor_id,brand,product_id,action,days,raw_text,needs_review,source').eq('store_id', store).is('deleted_at', null).limit(5000),
-  ]).then(([v, t]) => { setVendors((v.data as V[]) ?? []); setTerms((t.data as T[]) ?? []); setErr(v.error?.message ?? t.error?.message ?? ''); });
+    fetchAll<V>((a, b) => supabase.from('vendors').select('id,code,name').eq('store_id', store).is('deleted_at', null).order('code').range(a, b)),
+    fetchAll<T>((a, b) => supabase.from('terms').select('id,vendor_id,brand,product_id,action,days,raw_text,needs_review,source').eq('store_id', store).is('deleted_at', null).order('id').range(a, b)),
+  ]).then(([v, t]) => { setVendors(v); setTerms(t); setErr(''); }, e => setErr(e.message));
   useEffect(() => { load(); }, [store]);
 
   const main = (v: string) => terms.find(t => t.vendor_id === v && !t.brand && !t.product_id);
@@ -67,8 +68,8 @@ function Editor({ store, vendor, main, done }: { store: string; vendor: V; main?
   const [msg, setMsg] = useState('');
 
   useEffect(() => {
-    supabase.from('products').select('brand').eq('vendor_id', vendor.id).not('brand', 'is', null).limit(2000)
-      .then(({ data }) => setBrands([...new Set((data ?? []).map(p => p.brand as string))].sort()));
+    fetchAll<{ brand: string }>((a, b) => supabase.from('products').select('brand').eq('vendor_id', vendor.id).not('brand', 'is', null).order('id').range(a, b))
+      .then(data => setBrands([...new Set(data.map(p => p.brand))].sort()));
   }, [vendor.id]);
 
   async function save() {

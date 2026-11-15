@@ -50,10 +50,21 @@ export function useTerms(store: string) {
   const [state, setState] = useState<{ idx: Map<string, Term>; discountDays: number } | null>(null);
   useEffect(() => {
     Promise.all([
-      supabase.from('terms').select('vendor_id,brand,product_id,action,days,raw_text,needs_review').eq('store_id', store).is('deleted_at', null).limit(5000),
+      fetchAll<Term>((a, b) => supabase.from('terms').select('vendor_id,brand,product_id,action,days,raw_text,needs_review').eq('store_id', store).is('deleted_at', null).order('id').range(a, b)),
       supabase.from('stores').select('discount_days').eq('id', store).single(),
-    ]).then(([t, s]) => setState({ idx: indexTerms((t.data as Term[]) ?? []), discountDays: s.data?.discount_days ?? 45 }));
+    ]).then(([t, s]) => setState({ idx: indexTerms(t), discountDays: s.data?.discount_days ?? 45 }));
   }, [store]);
   return state;
 }
 export const BATCH_COLS = 'id,qty,expiry_date,expiry_note,status,shelf_id,shelves(name),products(id,name,ax_code,brand,vendor_id,no_return,sanh_dieu,vendors(code))';
+
+// Supabase trả tối đa 1000 dòng mỗi lần: lấy theo trang đến hết. Truy vấn phải có order ổn định.
+export async function fetchAll<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
+  const out: T[] = [];
+  for (let i = 0; ; i += 1000) {
+    const { data, error } = await page(i, i + 999);
+    if (error) throw new Error(error.message);
+    out.push(...(data ?? []));
+    if (!data || data.length < 1000) return out;
+  }
+}

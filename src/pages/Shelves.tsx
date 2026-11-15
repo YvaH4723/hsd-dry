@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase, canWrite, type Member } from '../supabase.ts';
-import { useShelves } from '../lib/db.ts';
+import { fetchAll, useShelves } from '../lib/db.ts';
 import BatchList from '../components/BatchList.tsx';
 
 export default function Shelves({ member }: { member: Member }) {
@@ -12,8 +12,9 @@ export default function Shelves({ member }: { member: Member }) {
   const [err, setErr] = useState('');
 
   useEffect(() => {
-    supabase.from('batches').select('shelf_id').eq('store_id', store).is('deleted_at', null).in('status', ['on_shelf', 'discounted']).limit(10000)
-      .then(({ data }) => { const c: Record<string, number> = {}; (data ?? []).forEach(b => { const k = b.shelf_id ?? ''; c[k] = (c[k] ?? 0) + 1; }); setCounts(c); });
+    fetchAll<{ shelf_id: string | null }>((a, b) => supabase.from('batches').select('shelf_id').eq('store_id', store).is('deleted_at', null)
+      .in('status', ['on_shelf', 'discounted', 'return_notified']).order('id').range(a, b))
+      .then(data => { const c: Record<string, number> = {}; data.forEach(b => { const k = b.shelf_id ?? ''; c[k] = (c[k] ?? 0) + 1; }); setCounts(c); });
   }, [store, shelves.length]);
 
   async function add() {

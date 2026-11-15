@@ -18,6 +18,8 @@ assert.equal(t('No'), 'discount:null');
 assert.equal(t('0'), 'discount:null');
 assert.equal(t(null), 'discount:null');
 assert.equal(t('Yes - Food: 36days - NF: 216 days'), 'return:36');
+assert.equal(t('No - Food: 30 days'), 'review');
+assert.equal(t('Fresh food: 3 days, Dry food: 90 days'), 'review');
 for (const v of ['Yes - 65% remaining', 'Yes', '3 tháng trở lên', 'Fresh milk: 30d\nPowder milk: 90d', '120 days (Monge 1 năm)', 'Yes - < 6 months'])
   assert.equal(t(v), 'review', v);
 assert.deepEqual(barcodesOf('Undefined'), []);

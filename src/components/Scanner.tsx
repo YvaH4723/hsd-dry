@@ -7,6 +7,8 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const want = useRef(false);
+  const starting = useRef(false);
+  const alive = useRef(true);
   const last = useRef({ code: '', at: 0 });
   const cb = useRef(onCode); cb.current = onCode;
   const [on, setOn] = useState(false);
@@ -22,11 +24,14 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
   };
 
   async function start() {
-    if (stream.current) return;
+    if (stream.current || starting.current) return;
+    starting.current = true;
     try {
       setMsg('Đang mở camera…');
       const det = await getDetector();
       const s = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+      // Bấm Tắt hoặc rời màn trong lúc đang mở camera: nhả camera ngay.
+      if (!want.current || !alive.current || document.hidden) { s.getTracks().forEach(t => t.stop()); setMsg(''); return; }
       stream.current = s; setOn(true); setMsg('');
       const v = video.current!; v.srcObject = s; await v.play().catch(() => {});
       s.getVideoTracks()[0].addEventListener('ended', () => { stop(); setMsg('Camera bị ngắt. Bấm Bật camera lại.'); });
@@ -41,7 +46,7 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
     } catch (e: any) {
       setMsg(e?.name === 'NotAllowedError' ? 'Chưa cho phép camera. Bật quyền camera cho trang này rồi thử lại, hoặc gõ mã / chụp ảnh.' : 'Không mở được camera: ' + (e?.message ?? e));
       want.current = false;
-    }
+    } finally { starting.current = false; }
   }
   function stop() {
     stream.current?.getTracks().forEach(t => t.stop());
@@ -50,8 +55,9 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
 
   useEffect(() => {
     const vis = () => { if (document.hidden) stop(); else if (want.current) start(); };
+    alive.current = true;
     document.addEventListener('visibilitychange', vis);
-    return () => { document.removeEventListener('visibilitychange', vis); stop(); };
+    return () => { alive.current = false; document.removeEventListener('visibilitychange', vis); stop(); };
   }, []);
 
   async function photo(f?: File) {

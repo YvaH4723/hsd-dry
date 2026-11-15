@@ -14,9 +14,10 @@ export function parseTerm(value: unknown): ParsedTerm {
   const raw = value == null ? '' : String(value).trim();
   const s = raw.replace(/\s+/g, ' ');
   if (/^(no|0|)$/i.test(s)) return { action: 'discount', days: null, review: false, raw };
+  if (/^no\b/i.test(s)) return { action: 'return', days: null, review: true, raw };
 
   // "Yes - Food: 36days - NF: 216 days": quầy Dry lấy phần Food
-  const food = /\bFood:\s*(\d+)\s*d/i.exec(s);
+  const food = /\n/.test(raw) ? null : /^yes\b.*?(?<!\w)Food:\s*(\d+)\s*d/i.exec(s);
   if (food) return { action: 'return', days: +food[1], review: false, raw };
 
   const m = /\n/.test(raw) ? null : SIMPLE.exec(s.replace(/^yes\b\s*[-–:]?\s*/i, ''));
