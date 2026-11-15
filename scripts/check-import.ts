@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { parseTerm, resolveVendors } from '../src/lib/terms.ts';
 import { barcodesOf, diffCatalog, mapRow, unaccent } from '../src/lib/cadencia.ts';
 import { addShelfLife, daysLeft, parseDmy } from '../src/lib/dates.ts';
+import { actionFor, indexTerms } from '../src/lib/action.ts';
 
 // Quy tắc nghiệp vụ trong kế hoạch
 const t = (v: unknown) => { const r = parseTerm(v); return r.review ? 'review' : `${r.action}:${r.days}`; };
@@ -39,6 +40,20 @@ assert.equal(addShelfLife('2026-01-31', 1, 'month'), '2026-02-28');
 assert.equal(addShelfLife('2026-03-31', 12, 'month'), '2027-03-31');
 assert.equal(addShelfLife('2026-11-15', 45, 'day'), '2026-12-30');
 assert.equal(daysLeft('2026-11-20', new Date(2026, 10, 15, 23, 59)), 5);
+{
+  const T = (brand: string | null, action: 'return' | 'discount', days: number | null, review = false, product: string | null = null) =>
+    ({ vendor_id: 'HT', brand, product_id: product, action, days, raw_text: null, needs_review: review });
+  const idx = indexTerms([T(null, 'return', 30), T('Twinings', 'return', 90), T('Anlene', 'discount', null), T(null, 'return', 7, false, 'p9')]);
+  const P = (brand: string | null, id = 'p1', extra = {}) => ({ id, brand, vendor_id: 'HT', no_return: false, sanh_dieu: false, vendors: { code: 'LS0103' }, ...extra });
+  const lot = { expiry_date: '2027-03-31', expiry_note: null };
+  assert.deepEqual(actionFor(lot, P('Twinings'), idx, 45), { kind: 'return', date: '2026-12-31', raw: null });   // nhãn đè NCC
+  assert.equal(actionFor(lot, P('Kewpie'), idx, 45).date, '2027-03-01');                                          // NCC 30 ngày
+  assert.equal(actionFor(lot, P('anlene '), idx, 45).kind, 'discount');                                            // không phân biệt hoa thường
+  assert.equal(actionFor(lot, P('Twinings', 'p9'), idx, 45).date, '2027-03-24');                                  // sản phẩm đè nhãn
+  assert.equal(actionFor(lot, P(null, 'p1', { vendors: { code: 'AFF01' } }), idx, 45).date, '2027-02-14');        // Ân Nam: giảm giá 45
+  assert.equal(actionFor(lot, P(null, 'p1', { vendor_id: 'X' }), idx, 45).label, 'Chưa có điều khoản');
+  assert.equal(actionFor({ expiry_date: '2027-01-01', expiry_note: 'action_date' }, P('Twinings'), idx, 45).date, '2027-01-01');
+}
 console.log('Quy tắc: OK');
 
 const [cadPath, conPath] = process.argv.slice(2);

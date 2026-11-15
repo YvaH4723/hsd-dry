@@ -43,3 +43,17 @@ export function useShelves(store: string) {
 }
 
 export const money = (n: number | null) => n == null ? '' : Number(n).toLocaleString('vi-VN') + 'đ';
+
+// Điều khoản + mốc giảm giá của cửa hàng, dùng để tính ngày báo trả / giảm giá cho từng lô.
+import { indexTerms, type Term } from './action.ts';
+export function useTerms(store: string) {
+  const [state, setState] = useState<{ idx: Map<string, Term>; discountDays: number } | null>(null);
+  useEffect(() => {
+    Promise.all([
+      supabase.from('terms').select('vendor_id,brand,product_id,action,days,raw_text,needs_review').eq('store_id', store).is('deleted_at', null).limit(5000),
+      supabase.from('stores').select('discount_days').eq('id', store).single(),
+    ]).then(([t, s]) => setState({ idx: indexTerms((t.data as Term[]) ?? []), discountDays: s.data?.discount_days ?? 45 }));
+  }, [store]);
+  return state;
+}
+export const BATCH_COLS = 'id,qty,expiry_date,expiry_note,status,shelf_id,shelves(name),products(id,name,ax_code,brand,vendor_id,no_return,sanh_dieu,vendors(code))';

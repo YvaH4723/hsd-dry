@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { supabase, canDelete, canWrite, type Member } from '../supabase.ts';
-import { audit, useShelves } from '../lib/db.ts';
+import { audit, BATCH_COLS, useShelves, useTerms } from '../lib/db.ts';
+import { actionFor, type LotProduct } from '../lib/action.ts';
+import ActionLine from './ActionLine.tsx';
 import { daysLeft, fmt } from '../lib/dates.ts';
 import DateInput from './DateInput.tsx';
 
-interface Batch { id: string; qty: number; expiry_date: string; expiry_note: string | null; status: string; shelf_id: string | null; shelves: { name: string } | null; products: { id: string; name: string; ax_code: string | null } }
+interface Batch { id: string; qty: number; expiry_date: string; expiry_note: string | null; status: string; shelf_id: string | null; shelves: { name: string } | null; products: LotProduct & { name: string; ax_code: string | null } }
 const RANGES = [['all', 'Tất cả'], ['over', 'Quá hạn'], ['7', '≤ 7 ngày'], ['30', '≤ 30 ngày'], ['90', '≤ 90 ngày']] as const;
 
 // Danh sách lô theo ngày còn lại; đỏ khi quá hạn. Lô quá hạn chỉ gắn cờ, không tự trừ tồn.
@@ -15,10 +17,11 @@ export default function BatchList({ member, shelfId, productId, reloadKey }: { m
   const [range, setRange] = useState<string>('all');
   const [edit, setEdit] = useState<string | null>(null);
   const [err, setErr] = useState('');
+  const terms = useTerms(store);
 
   async function load() {
-    let q = supabase.from('batches').select('id,qty,expiry_date,expiry_note,status,shelf_id,shelves(name),products(id,name,ax_code)')
-      .eq('store_id', store).is('deleted_at', null).in('status', ['on_shelf', 'discounted']).order('expiry_date').limit(500);
+    let q = supabase.from('batches').select(BATCH_COLS)
+      .eq('store_id', store).is('deleted_at', null).in('status', ['on_shelf', 'discounted', 'return_notified']).order('expiry_date').limit(500);
     if (shelfId) q = q.eq('shelf_id', shelfId);
     if (productId) q = q.eq('product_id', productId);
     const { data, error } = await q;
@@ -44,8 +47,9 @@ export default function BatchList({ member, shelfId, productId, reloadKey }: { m
                 <div className="click" onClick={() => canWrite(member) && setEdit(edit === b.id ? null : b.id)}>
                   <div className="row"><span style={{ flex: 3 }}>{productId ? (b.shelves?.name ?? 'Chưa có kệ') : b.products.name}</span>
                     <span style={{ textAlign: 'right' }} className={d < 0 ? 'over' : d <= 30 ? 'soon' : ''}>{d < 0 ? `Quá ${-d} ngày` : d === 0 ? 'Hết hạn hôm nay' : `Còn ${d} ngày`}</span></div>
-                  {b.expiry_note && <div className="warn">{b.expiry_note === 'estimated' ? 'HSD ước tính từ ExpiryDay, kiểm lại trên bao bì' : 'Ngày báo trả từ ExpiryDay, chưa có HSD thật'}</div>}
-                  <div className="mute">{b.expiry_note === 'action_date' ? 'Ngày báo trả' : 'HSD'} {fmt(b.expiry_date)} · SL {b.qty}{!productId && !shelfId && b.shelves ? ' · ' + b.shelves.name : ''}{b.status === 'discounted' ? ' · đã giảm giá' : ''}</div>
+                  {b.expiry_note === 'estimated' && <div className="warn">HSD ước tính từ ExpiryDay, kiểm lại trên bao bì</div>}
+                  <div className="mute">{b.expiry_note === 'action_date' ? 'Ngày báo trả' : 'HSD'} {fmt(b.expiry_date)} · SL {b.qty}{!productId && !shelfId && b.shelves ? ' · ' + b.shelves.name : ''}</div>
+                  {terms && <ActionLine a={actionFor(b, b.products, terms.idx, terms.discountDays)} status={b.status} />}
                 </div>
                 {edit === b.id && <Editor b={b} member={member} shelves={shelves} done={() => { setEdit(null); load(); }} />}
               </div>
