@@ -43,8 +43,12 @@ export default function AddBatch({ member, initial, onClose }: { member: Member;
   async function attach(p: Product) {
     if (unknown) {
       const rows = (/^\d{11,12}$/.test(unknown) ? codeVariants(unknown) : [unknown]).map(code => ({ store_id: store, product_id: p.id, code }));
-      const { error } = await supabase.from('barcodes').upsert(rows, { onConflict: 'store_id,code', ignoreDuplicates: true });
+      const { data, error } = await supabase.from('barcodes').upsert(rows, { onConflict: 'store_id,code', ignoreDuplicates: true }).select('code');
       if (error) return setMsg('Lỗi gắn mã: ' + error.message);
+      if (!data?.length) {
+        const { data: o } = await supabase.from('barcodes').select('deleted_at,products(name)').eq('store_id', store).in('code', rows.map(r => r.code)).limit(1).maybeSingle();
+        return setMsg(`Không gắn được: mã ${unknown} đã thuộc "${(o as any)?.products?.name ?? 'sản phẩm khác'}"${(o as any)?.deleted_at ? ' (đã xóa)' : ''}.`);
+      }
     }
     setProduct(p); setUnknown(''); setQ(''); setHits([]); setMsg('Đã gắn mã ' + unknown + ' cho sản phẩm này.');
   }
