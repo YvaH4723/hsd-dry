@@ -27,7 +27,7 @@ async function loadExisting(store: string): Promise<Existing[]> {
     const { data, error } = await supabase.from('products').select('id,ax_code,name,price,active,category,vendors(code)')
       .eq('store_id', store).not('ax_code', 'is', null).is('deleted_at', null).order('ax_code').range(i, i + 999);
     if (error) throw error;
-    out.push(...data.map((p: any) => ({ id: p.id, ax: p.ax_code, name: p.name, price: p.price == null ? null : Number(p.price), vendorCode: p.vendors?.code ?? '', active: p.active, keep: p.category === 'Từ ExpiryDay' || p.category === 'Tạo trong app' })));
+    out.push(...data.map((p: any) => ({ id: p.id, ax: p.ax_code, name: p.name, price: p.price == null ? null : Number(p.price), vendorCode: p.vendors?.code ?? '', active: p.active, category: p.category, keep: p.category === 'Từ ExpiryDay' || p.category === 'Tạo trong app' })));
     if (data.length < 1000) return out;
   }
 }
@@ -131,7 +131,7 @@ export default function Import({ member }: { member: Member }) {
       <div className="panel">
         <h2>Danh mục sản phẩm</h2>
         <p className="note">
-          File GTB Cadencia (có cột AX Code): cập nhật tên, giá, NCC, mã vạch; sản phẩm không còn trong file sẽ bị ẩn, không xóa.
+          File GTB Cadencia (có cột AX Code, ví dụ Dry Salt/Sweet hoặc DHP/NF): cập nhật tên, giá, NCC, mã vạch; sản phẩm thuộc cùng nhóm hàng mà không còn trong file sẽ bị ẩn, không xóa.
           File Cadencia tổng TB (có cột Product number): lấy hàng của tất cả các quầy, thêm sản phẩm app chưa có và điền NCC, giá còn trống; không sửa tên, không ẩn gì.
           Cả hai không đụng lô HSD, kệ.
         </p>

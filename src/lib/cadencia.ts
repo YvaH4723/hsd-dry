@@ -33,7 +33,7 @@ export function mapRow(r: Record<string, unknown>): CatalogItem {
   };
 }
 
-export interface Existing { id?: string; ax: string; name: string; price: number | null; vendorCode: string; active: boolean; keep?: boolean }
+export interface Existing { id?: string; ax: string; name: string; price: number | null; vendorCode: string; active: boolean; keep?: boolean; category?: string | null }
 export interface Preview {
   mode?: 'gtb' | 'tb'; skipped?: number;
   added: CatalogItem[]; updated: { item: CatalogItem; changes: string[] }[]; unchanged: number;
@@ -60,8 +60,10 @@ export function diffCatalog(rows: Record<string, unknown>[], existing: Existing[
     ].filter(Boolean) as string[];
     changes.length ? p.updated.push({ item: it, changes }) : p.unchanged++;
   });
-  // Sản phẩm chuyển từ ExpiryDay (keep) không bị ẩn dù không có trong file.
-  p.hidden = existing.filter(e => e.active && !e.keep && !seenAx.has(e.ax));
+  // Chỉ ẩn trong các nhóm hàng (Category) mà file này có: file Dry Salt/Sweet không ẩn hàng DHP/NF và ngược lại.
+  // Sản phẩm chuyển từ ExpiryDay / tạo trong app (keep) không bị ẩn dù không có trong file.
+  const cats = new Set(rows.map(r => mapRow(r).category).filter(Boolean));
+  p.hidden = existing.filter(e => e.active && !e.keep && !seenAx.has(e.ax) && cats.has(e.category ?? ''));
   return p;
 }
 
