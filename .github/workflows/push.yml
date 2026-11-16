@@ -1,0 +1,18 @@
+name: Push notifications
+on:
+  schedule:
+    - cron: '3 0,8 * * *'   # 7:03 và 15:03 giờ Việt Nam
+  workflow_dispatch:
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm i --no-save --no-audit --no-fund web-push@3.6.7
+      - run: node scripts/push.ts
+        env:
+          TZ: Asia/Ho_Chi_Minh
+          PUSH_TOKEN: ${{ secrets.PUSH_TOKEN }}

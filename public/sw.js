@@ -20,3 +20,19 @@ self.addEventListener('fetch', e => {
     return res;
   })));
 });
+
+// Thông báo hằng ngày (gửi từ GitHub Actions). Bấm vào: mở app (tab Hôm nay).
+self.addEventListener('push', e => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch { d = { body: e.data?.text() }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'HSD Dry', {
+    body: d.body || 'Mở app để xem việc hôm nay', icon: APP + 'icon-192.png', badge: APP + 'icon-192.png',
+    tag: 'hsd-digest', renotify: true, data: { url: d.url || APP },
+  }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(ws => {
+    const w = ws.find(c => c.url.startsWith(APP));
+    return w ? w.focus() : self.clients.openWindow(e.notification.data?.url || APP);
+  }));
+});

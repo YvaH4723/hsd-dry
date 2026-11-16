@@ -14,6 +14,7 @@ import Settings from './pages/Settings.tsx';
 import Members from './pages/Members.tsx';
 import SyncPanel, { SyncBadge, syncedText } from './components/SyncPanel.tsx';
 import Backup from './components/Backup.tsx';
+import PushToggle from './components/PushToggle.tsx';
 import Icon, { type IconName } from './components/Icon.tsx';
 import { isNet, startSync, useSync } from './lib/offline.ts';
 
@@ -152,6 +153,7 @@ function More({ member, email, uid, sub, setSub }: { member: Member; email?: str
           </div>
         ))}
       </div>
+      <PushToggle store={member.store_id} />
       <div className="sec"><h2>Tài khoản</h2></div>
       <div className="panel">
         <div className="row">
