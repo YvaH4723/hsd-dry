@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { canDelete, canWrite, type Member } from '../supabase.ts';
-import { useShelves, useTerms, type Shelf } from '../lib/db.ts';
+import { useShelves, useTerms, useZones, zoneFilter, type Shelf } from '../lib/db.ts';
+import ZoneChips from './ZoneChips.tsx';
 import { loadBatches, updateBatchOffline } from '../lib/offline.ts';
 import { actionFor } from '../lib/action.ts';
 import { daysLeft, fmt } from '../lib/dates.ts';
@@ -16,6 +17,9 @@ export default function BatchList({ member, shelfId, productId, rev }: { member:
   const store = member.store_id;
   const { shelves } = useShelves(store);
   const terms = useTerms(store);
+  const { zones } = useZones(store);
+  const mine = member.zones ?? [];
+  const [zone, setZone] = useState(mine.length ? 'mine' : 'all');
   const [rows, setRows] = useState<LotRow[] | null>(null);
   const [range, setRange] = useState<string>('all');
   const [edit, setEdit] = useState<string | null>(null);
@@ -24,7 +28,8 @@ export default function BatchList({ member, shelfId, productId, rev }: { member:
   const load = () => loadBatches(store, { shelfId, productId }).then(d => { setErr(''); setRows(d); }, (e: Error) => setErr(e.message));
   useEffect(() => { load(); }, [store, shelfId, productId, rev]);
 
-  const all = rows ?? [];
+  const top = !productId && !shelfId;           // chỉ lọc khu ở tab Hết hạn
+  const all = (rows ?? []).filter(top ? zoneFilter(zone, mine, shelves) : () => true);
   const noHsd = all.filter(b => b.expiry_note === 'action_date');
   const dated = all.filter(b => b.expiry_note !== 'action_date');
   const over = dated.filter(b => daysLeft(b.expiry_date) < 0).length;
@@ -53,6 +58,7 @@ export default function BatchList({ member, shelfId, productId, rev }: { member:
           {noHsd.length > 0 && <> · <b className="warn">{noHsd.length}</b> chưa có HSD</>}
         </p>
       )}
+      {top && <ZoneChips zones={zones} mine={mine} value={zone} onChange={setZone} />}
       {!productId && all.length > 0 && (
         <div className="chips" role="group" aria-label="Lọc theo số ngày còn lại">
           {RANGES.map(([k, t]) => <button key={k} aria-pressed={range === k} onClick={() => setRange(k)}>{t}</button>)}

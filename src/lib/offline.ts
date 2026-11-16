@@ -77,7 +77,7 @@ export async function refreshSnapshot(store: string) {
     const [products, terms, shelves, st] = await Promise.all([
       fetchAll<Product>((a, b) => supabase.from('products').select(SNAP_PRODUCT_COLS).eq('store_id', store).is('deleted_at', null).order('id').range(a, b) as any),
       fetchAll<Term>((a, b) => supabase.from('terms').select('vendor_id,brand,product_id,action,days,raw_text,needs_review').eq('store_id', store).is('deleted_at', null).order('id').range(a, b) as any),
-      fetchAll<Shelf>((a, b) => supabase.from('shelves').select('id,name,qr_code,sort_order').eq('store_id', store).is('deleted_at', null).order('sort_order').order('name').range(a, b) as any),
+      fetchAll<Shelf>((a, b) => supabase.from('shelves').select('*').eq('store_id', store).is('deleted_at', null).order('sort_order').order('name').range(a, b) as any),
       supabase.from('stores').select('*').eq('id', store).single(),
     ]);
     await Promise.all([put('products', products), put('terms', terms), put('shelves', shelves), put('store', st.data)]);

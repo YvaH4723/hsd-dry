@@ -9,7 +9,7 @@ export interface Product {
   category: string | null; vendor_id: string | null; no_return: boolean; sanh_dieu: boolean;
   vendors?: { code: string; name: string } | null; barcodes?: { code: string }[];
 }
-export interface Shelf { id: string; name: string; qr_code: string; sort_order: number }
+export interface Shelf { id: string; name: string; qr_code: string; sort_order: number; zone_id?: string | null }
 export const PRODUCT_COLS = 'id,ax_code,name,name_vi,brand,price,active,category,vendor_id,no_return,sanh_dieu,vendors(code,name),barcodes(code)';
 
 const ok = <T,>(r: { data: T | null; error: { message: string } | null }) => { if (r.error) throw new Error(r.error.message); return r.data; };
@@ -76,10 +76,28 @@ export const audit = (store: string, batch_id: string, action: string, before: u
 
 export function useShelves(store: string) {
   const [shelves, setShelves] = useState<Shelf[]>([]);
-  const reload = () => supabase.from('shelves').select('id,name,qr_code,sort_order').eq('store_id', store).is('deleted_at', null)
+  const reload = () => supabase.from('shelves').select('*').eq('store_id', store).is('deleted_at', null)
     .order('sort_order').order('name').then(async ({ data, error }) => setShelves(error && isNet(error) ? await localShelves() : (data as Shelf[]) ?? []));
   useEffect(() => { reload(); }, [store]);
   return { shelves, reload };
+}
+
+// Khu (Bánh kẹo, Mỹ phẩm…): lưu thêm trên máy để mất mạng vẫn lọc được.
+export interface Zone { id: string; name: string }
+const ZONES = 'hsd.zones';
+export function useZones(store: string) {
+  const [zones, setZones] = useState<Zone[]>(() => { try { return JSON.parse(localStorage.getItem(ZONES) ?? '[]'); } catch { return []; } });
+  const reload = () => supabase.from('zones').select('id,name').eq('store_id', store).is('deleted_at', null).order('sort_order').order('name')
+    .then(({ data, error }) => { if (error) return; setZones(data as Zone[]); try { localStorage.setItem(ZONES, JSON.stringify(data)); } catch { /* */ } });
+  useEffect(() => { reload(); }, [store]);
+  return { zones, reload };
+}
+// Lọc lô theo khu: 'all' | 'mine' (khu của tôi) | id một khu. Lô chưa gắn kệ / kệ chưa có khu: luôn hiện ở "Khu của tôi".
+export function zoneFilter(value: string, mine: string[], shelves: Shelf[]) {
+  if (value === 'all') return () => true;
+  const zoneOf = new Map(shelves.map(s => [s.id, s.zone_id ?? null]));
+  const set = new Set(value === 'mine' ? mine : [value]);
+  return (l: { shelf_id?: string | null }) => { const z = l.shelf_id ? zoneOf.get(l.shelf_id) ?? null : null; return z ? set.has(z) : value === 'mine'; };
 }
 
 export const money = (n: number | null) => n == null ? '' : Number(n).toLocaleString('vi-VN') + 'đ';

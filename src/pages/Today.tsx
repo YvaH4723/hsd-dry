@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { canWrite, type Member } from '../supabase.ts';
-import { pname, useTerms } from '../lib/db.ts';
+import { pname, useShelves, useTerms, useZones, zoneFilter } from '../lib/db.ts';
+import ZoneChips from '../components/ZoneChips.tsx';
 import { loadBatches, updateBatchOffline } from '../lib/offline.ts';
 import { actionFor, type Action } from '../lib/action.ts';
 import { daysLeft } from '../lib/dates.ts';
@@ -17,6 +18,10 @@ const DONE: Record<string, string> = { sold_out: 'Đã bán hết', discarded: '
 export default function Today({ member, rev, onHistory }: { member: Member; rev?: number; onHistory?: () => void }) {
   const store = member.store_id, write = canWrite(member);
   const terms = useTerms(store);
+  const { shelves } = useShelves(store);
+  const { zones } = useZones(store);
+  const mine = member.zones ?? [];
+  const [zone, setZone] = useState(mine.length ? 'mine' : 'all');
   const [lots, setLots] = useState<LotRow[] | null>(null);
   const [err, setErr] = useState('');
   const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
@@ -36,7 +41,8 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
   }
 
   if (!lots || !terms) return err ? <p className="msg bad">{err}</p> : <LotsLoading />;
-  const all: Item[] = lots.map(l => ({ l, a: actionFor(l, l.products, terms) }));
+  const inZone = zoneFilter(zone, mine, shelves);
+  const all: Item[] = lots.filter(inZone).map(l => ({ l, a: actionFor(l, l.products, terms) }));
   const expired = ({ l }: Item) => l.expiry_note !== 'action_date' && daysLeft(l.expiry_date) < 0;
   const open = all.filter(x => x.l.status === 'on_shelf' && !expired(x));
   const left = (x: Item) => daysLeft(x.a.date);
@@ -55,6 +61,7 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
   return (
     <>
       <p className="summary">{today.charAt(0).toUpperCase() + today.slice(1)}{todo > 0 && <> · <b>{todo}</b> lô cần xử lý</>}</p>
+      <ZoneChips zones={zones} mine={mine} value={zone} onChange={setZone} />
       {err && <p className="msg bad">{err}</p>}
       {!todo && (
         <div className="empty">

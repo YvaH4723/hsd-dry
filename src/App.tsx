@@ -48,7 +48,7 @@ export default function App() {
 
   useEffect(() => {
     if (!session) { setMember(undefined); return; }
-    supabase.from('members').select('store_id,role,name,can_write,can_delete').eq('user_id', session.user.id).maybeSingle()
+    supabase.from('members').select('*').eq('user_id', session.user.id).maybeSingle()
       .then(({ data, error }) => {
         if (error && isNet(error)) return setMember(cachedMember(session.user.id));   // mất mạng: dùng thông tin đã lưu
         const m = (data as Member) ?? null;

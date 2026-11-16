@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
 import { isNet } from '../lib/offline.ts';
+import { useZones } from '../lib/db.ts';
 import Icon from '../components/Icon.tsx';
 import { LotsLoading } from '../components/Lot.tsx';
 
-interface Row { user_id: string; name: string; email: string; role: Member['role']; can_write: boolean; can_delete: boolean }
+interface Row { user_id: string; name: string; email: string; role: Member['role']; can_write: boolean; can_delete: boolean; zones?: string[] }
 const ROLES: [Member['role'], string, string][] = [
   ['staff', 'Nhân viên', 'Thêm, sửa lô; đánh dấu báo trả, giảm giá'],
   ['viewer', 'Chỉ xem', 'Xem, tra giá; không sửa được gì'],
@@ -22,8 +23,9 @@ export default function Members({ member, myId }: { member: Member; myId?: strin
   const [role, setRole] = useState<Member['role']>('staff');
   const [msg, setMsg] = useState<{ text: string; ok?: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+  const { zones } = useZones(store);
 
-  const load = () => supabase.from('members').select('user_id,name,email,role,can_write,can_delete').eq('store_id', store).order('created_at')
+  const load = () => supabase.from('members').select('*').eq('store_id', store).order('created_at')
     .then(({ data, error }) => error ? setMsg({ text: errText(error) }) : setRows(data as Row[]));
   useEffect(() => { load(); }, [store]);
 
@@ -79,7 +81,17 @@ export default function Members({ member, myId }: { member: Member; myId?: strin
                   <div className="grow"><div className="lot-name">{r.name}{me ? ' (bạn)' : ''}</div><div className="note">{r.email}</div></div>
                   {!me && <button className="icon" aria-label={'Bỏ ' + r.name} onClick={() => remove(r)}><Icon name="trash" /></button>}
                 </div>
-                {me ? <p className="note">Quản trị. Không tự đổi quyền của mình để tránh mất quyền quản trị.</p> : (
+                {zones.length > 0 && (
+                  <div className="exist" role="group" aria-label={'Khu của ' + r.name}>
+                    <span className="note">Phụ trách khu:</span>
+                    {zones.map(z => {
+                      const on = (r.zones ?? []).includes(z.id);
+                      return <label className="check" key={z.id} style={{ minHeight: 36 }}><input type="checkbox" checked={on}
+                        onChange={() => set(r, { zones: on ? (r.zones ?? []).filter(x => x !== z.id) : [...(r.zones ?? []), z.id] })} />{z.name}</label>;
+                    })}
+                  </div>
+                )}
+                {me ? <p className="note">Quản trị. Không tự đổi quyền của mình để tránh mất quyền quản trị. Đổi khu của mình xong, tắt mở lại app để áp dụng.</p> : (
                   <>
                     <select aria-label={'Quyền của ' + r.name} value={r.role} onChange={e => { const v = e.target.value as Member['role']; set(r, { role: v, can_write: v !== 'viewer', can_delete: v === 'admin' ? true : r.can_delete && v !== 'viewer' }); }}>
                       {ROLES.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
