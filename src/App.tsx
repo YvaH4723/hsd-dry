@@ -12,6 +12,7 @@ import Today from './pages/Today.tsx';
 import Terms from './pages/Terms.tsx';
 import Settings from './pages/Settings.tsx';
 import SyncPanel, { SyncBadge } from './components/SyncPanel.tsx';
+import Backup from './components/Backup.tsx';
 import { isNet, startSync } from './lib/offline.ts';
 
 const MEMBER_KEY = 'hsd.member';
@@ -90,9 +91,9 @@ function More({ member }: { member: Member }) {
         <button className={sub === 'terms' ? 'on' : ''} onClick={() => setSub('terms')}>Điều khoản đổi trả</button>
         {member.role === 'admin' && <button className={sub === 'import' ? 'on' : ''} onClick={() => setSub('import')}>Nhập file</button>}
         {member.role === 'admin' && <button className={sub === 'settings' ? 'on' : ''} onClick={() => setSub('settings')}>Cài đặt</button>}
-        <button className={sub === 'offline' ? 'on' : ''} onClick={() => setSub('offline')}>Mất mạng</button>
+        <button className={sub === 'offline' ? 'on' : ''} onClick={() => setSub('offline')}>Dữ liệu & sao lưu</button>
       </div>
-      {sub === 'terms' ? <Terms member={member} /> : sub === 'import' ? <Import member={member} /> : sub === 'settings' ? <Settings member={member} /> : <SyncPanel store={member.store_id} />}
+      {sub === 'terms' ? <Terms member={member} /> : sub === 'import' ? <Import member={member} /> : sub === 'settings' ? <Settings member={member} /> : <><SyncPanel store={member.store_id} /><Backup store={member.store_id} /></>}
     </>
   );
 }
