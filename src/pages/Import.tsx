@@ -132,7 +132,7 @@ export default function Import({ member }: { member: Member }) {
         <h2>Danh mục sản phẩm</h2>
         <p className="note">
           File GTB Cadencia (có cột AX Code): cập nhật tên, giá, NCC, mã vạch; sản phẩm không còn trong file sẽ bị ẩn, không xóa.
-          File Cadencia tổng TB (có cột Product number): chỉ lấy hàng 101 - DRY FOOD, thêm sản phẩm app chưa có và điền NCC, giá còn trống; không sửa tên, không ẩn gì.
+          File Cadencia tổng TB (có cột Product number): chỉ lấy hàng 101 - DRY FOOD, DHP, Non Food, thêm sản phẩm app chưa có và điền NCC, giá còn trống; không sửa tên, không ẩn gì.
           Cả hai không đụng lô HSD, kệ.
         </p>
         <input type="file" accept=".xlsx,.xls" aria-label="Chọn file Cadencia" disabled={busy} onChange={e => pick(e.target.files?.[0])} />
