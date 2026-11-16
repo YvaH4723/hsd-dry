@@ -14,7 +14,7 @@ const DONE: Record<string, string> = { sold_out: 'Đã bán hết', discarded: '
 
 // "Hôm nay cần làm": quá HSD → quá ngày báo trả → báo trả trong 7 ngày → cần dán giảm giá → chờ NCC lấy.
 // Lô quá HSD chỉ nằm ở nhóm Quá HSD, không lặp ở nhóm khác.
-export default function Today({ member, rev }: { member: Member; rev?: number }) {
+export default function Today({ member, rev, onHistory }: { member: Member; rev?: number; onHistory?: () => void }) {
   const store = member.store_id, write = canWrite(member);
   const terms = useTerms(store);
   const [lots, setLots] = useState<LotRow[] | null>(null);
@@ -80,6 +80,7 @@ export default function Today({ member, rev }: { member: Member; rev?: number })
           </div>
         </section>
       ))}
+      {onHistory && <button className="ghost block" onClick={onHistory}>Xem lô đã xử lý, khôi phục khi bấm nhầm</button>}
       {toast && (
         <div className="toast" role="status">
           <span>{toast.text}</span>
