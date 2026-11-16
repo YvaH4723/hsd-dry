@@ -25,6 +25,17 @@ export default function Members({ member, myId }: { member: Member; myId?: strin
   const [busy, setBusy] = useState(false);
   const { zones } = useZones(store);
 
+  const [pending, setPending] = useState<{ email: string; name: string; created_at: string }[] | null>(null);
+  const [pRole, setPRole] = useState<Record<string, Member['role']>>({});
+  const loadPending = () => supabase.rpc('pending_users', { p_store: store }).then(({ data, error }) => setPending(error ? null : data));
+  useEffect(() => { loadPending(); }, [store]);
+  async function accept(p: { email: string; name: string }) {
+    const { data, error } = await supabase.rpc('add_member', { p_store: store, p_email: p.email, p_name: p.name, p_role: pRole[p.email] ?? 'staff' });
+    if (error) return setMsg({ text: errText(error) });
+    setMsg({ text: data === 'ok' ? `Đã cho ${p.name || p.email} vào cửa hàng. Họ bấm Thử lại là dùng được.` : 'Người này đã là thành viên.', ok: data === 'ok' });
+    loadPending(); load();
+  }
+
   const load = () => supabase.from('members').select('*').eq('store_id', store).order('created_at')
     .then(({ data, error }) => error ? setMsg({ text: errText(error) }) : setRows(data as Row[]));
   useEffect(() => { load(); }, [store]);
@@ -54,8 +65,32 @@ export default function Members({ member, myId }: { member: Member; myId?: strin
   return (
     <>
       <h2 className="title">Thành viên</h2>
-      <div className="panel stack">
-        <h2>Thêm đồng nghiệp</h2>
+      <p className="note">Đồng nghiệp mở app, bấm "Chưa có tài khoản? Đăng ký". Người đã đăng ký hiện ở Chờ duyệt, bạn chọn quyền rồi bấm Cho vào.</p>
+      {pending && pending.length > 0 && (
+        <section className="grp">
+          <div className="sec"><h2><span className="dot warn" />Chờ duyệt</h2><span className="cnt">{pending.length}</span></div>
+          <div className="list">
+            {pending.map(p => (
+              <div className="li li-body stack" key={p.email}>
+                <div className="row">
+                  <Icon name="user" size={22} />
+                  <div className="grow"><div className="lot-name">{p.name || p.email.split('@')[0]}</div><div className="note">{p.email} · đăng ký {new Date(p.created_at).toLocaleDateString('vi-VN')}</div></div>
+                </div>
+                <div className="row">
+                  <select className="grow" aria-label={'Quyền cho ' + p.email} value={pRole[p.email] ?? 'staff'} onChange={e => setPRole(r => ({ ...r, [p.email]: e.target.value as Member['role'] }))}>
+                    {ROLES.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+                  </select>
+                  <button className="pri" onClick={() => accept(p)}>Cho vào</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+      {msg && <p className={`msg ${msg.ok ? 'ok' : 'bad'}`}>{msg.text}</p>}
+      <details className="panel more" style={{ borderTop: 0 }}>
+        <summary>Thêm bằng email</summary>
+      <div className="stack">
         <p className="note">Bước 1: đồng nghiệp mở app trên máy họ, nhập email + mật khẩu, bấm "Chưa có tài khoản? Đăng ký". Bước 2: bạn nhập email đó ở đây.</p>
         <label className="lbl" htmlFor="m-email">Email đồng nghiệp</label>
         <input id="m-email" type="email" inputMode="email" autoCapitalize="none" value={email} onChange={e => setEmail(e.target.value)} placeholder="ten@gmail.com" />
@@ -67,8 +102,8 @@ export default function Members({ member, myId }: { member: Member; myId?: strin
         </select>
         <p className="note">{ROLES.find(r => r[0] === role)![2]}</p>
         <button className="pri block" disabled={busy || !/\S+@\S+\.\S+/.test(email)} onClick={add}><Icon name="plus" size={18} />{busy ? 'Đang thêm…' : 'Thêm vào cửa hàng'}</button>
-        {msg && <p className={`msg ${msg.ok ? 'ok' : 'bad'}`}>{msg.text}</p>}
       </div>
+      </details>
       <div className="sec"><h2>Đang có</h2><span className="cnt">{rows?.length ?? ''}</span></div>
       {rows == null ? <LotsLoading /> : (
         <div className="list">

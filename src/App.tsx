@@ -69,7 +69,7 @@ export default function App() {
     <main className="login page">
       <h1>Chưa vào cửa hàng</h1>
       <p>Tài khoản <b>{session?.user.email}</b> chưa thuộc cửa hàng nào.</p>
-      <p className="note">Gửi email này cho quản trị viên để được thêm vào cửa hàng (Khác → Thành viên), rồi bấm Thử lại.</p>
+      <p className="note">Đã gửi yêu cầu vào cửa hàng. Quản trị viên duyệt xong (Khác → Thành viên → Chờ duyệt) thì bấm Thử lại.</p>
       <button className="pri" onClick={() => location.reload()}>Thử lại</button>
       <button onClick={() => logout(0)}>Đăng xuất</button>
     </main>
@@ -125,6 +125,8 @@ function More({ member, email, uid, sub, setSub }: { member: Member; email?: str
   const s = useSync();
   const terms = useTerms(member.store_id);
   const admin = member.role === 'admin';
+  const [waiting, setWaiting] = useState(0);
+  useEffect(() => { if (admin && !sub) supabase.rpc('pending_users', { p_store: member.store_id }).then(({ data }) => setWaiting(data?.length ?? 0)); }, [sub]);
   if (sub) return (
     <>
       <button className="back" onClick={() => setSub(null)}><Icon name="back" size={20} />Khác</button>
@@ -136,7 +138,7 @@ function More({ member, email, uid, sub, setSub }: { member: Member; email?: str
     ['history', 'checkCircle', 'Lịch sử, khôi phục', 'Lô đã xử lý, đã xóa: xem ai làm, khôi phục khi bấm nhầm'],
     ['terms', 'clipboard', 'Điều khoản đổi trả', 'Tra và sửa điều khoản của từng NCC, nhãn hàng'],
     ...(admin ? [
-      ['members', 'user', 'Thành viên', 'Thêm đồng nghiệp, chọn quyền'],
+      ['members', 'user', 'Thành viên', waiting ? `${waiting} người chờ duyệt` : 'Duyệt đồng nghiệp, chọn quyền, khu'],
       ['import', 'upload', 'Nhập file', 'Danh mục Cadencia, Contact List'],
       ['settings', 'sliders', 'Cài đặt', terms ? `Giảm giá trước HSD ${terms.discountDays} ngày · báo trả sớm thêm ${terms.returnBuffer} ngày` : 'Mốc giảm giá, số ngày an toàn'],
     ] as [Exclude<Sub, null>, IconName, string, string][] : []),

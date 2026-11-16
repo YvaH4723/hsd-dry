@@ -17,6 +17,7 @@ const vi = (m: string) => VI.find(([r]) => r.test(m))?.[1] ?? 'Lỗi: ' + m;
 export default function Login() {
   const [email, setEmail] = useState('');
   const [pw, setPw] = useState('');
+  const [name, setName] = useState('');
   const [msg, setMsg] = useState<{ text: string; ok?: boolean } | null>(null);
   const [busy, setBusy] = useState<'in' | 'up' | null>(null);
   const ready = !!email.trim() && pw.length >= 6 && !busy;
@@ -26,7 +27,7 @@ export default function Login() {
     setBusy(signUp ? 'up' : 'in'); setMsg(null);
     try {
       const { data, error } = signUp
-        ? await supabase.auth.signUp({ email: email.trim(), password: pw })
+        ? await supabase.auth.signUp({ email: email.trim(), password: pw, options: { data: { name: name.trim() } } })
         : await supabase.auth.signInWithPassword({ email: email.trim(), password: pw });
       if (error) setMsg({ text: vi(error.message) });
       else if (signUp && !data.session) setMsg({ text: 'Đã đăng ký. Mở email để xác nhận rồi đăng nhập.', ok: true });
@@ -44,10 +45,12 @@ export default function Login() {
         <input id="email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" value={email} onChange={e => setEmail(e.target.value)} />
         <label className="lbl" htmlFor="pw">Mật khẩu</label>
         <input id="pw" type="password" autoComplete="current-password" value={pw} onChange={e => setPw(e.target.value)} />
+        <label className="lbl" htmlFor="nm">Tên của bạn (chỉ cần khi đăng ký)</label>
+        <input id="nm" autoComplete="name" placeholder="Để quản trị viên nhận ra bạn" value={name} onChange={e => setName(e.target.value)} />
         {msg && <p className={`msg ${msg.ok ? 'ok' : 'bad'}`} role="alert">{msg.text}</p>}
         <button type="submit" className="pri block" disabled={!ready}>{busy === 'in' ? 'Đang đăng nhập…' : 'Đăng nhập'}</button>
         <button type="button" className="ghost block" disabled={!ready} onClick={() => go(true)}>{busy === 'up' ? 'Đang đăng ký…' : 'Chưa có tài khoản? Đăng ký'}</button>
-        <p className="note">Mật khẩu ít nhất 6 ký tự. Đăng ký xong, nhờ quản trị viên thêm bạn vào cửa hàng.</p>
+        <p className="note">Mật khẩu ít nhất 6 ký tự. Đăng ký xong, quản trị viên sẽ thấy bạn trong mục Chờ duyệt và cho bạn vào cửa hàng.</p>
       </form>
     </main>
   );
