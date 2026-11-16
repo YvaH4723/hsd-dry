@@ -11,6 +11,7 @@ import BatchList from './components/BatchList.tsx';
 import Today from './pages/Today.tsx';
 import Terms from './pages/Terms.tsx';
 import Settings from './pages/Settings.tsx';
+import Members from './pages/Members.tsx';
 import SyncPanel, { SyncBadge, syncedText } from './components/SyncPanel.tsx';
 import Backup from './components/Backup.tsx';
 import Icon, { type IconName } from './components/Icon.tsx';
@@ -22,7 +23,7 @@ const cachedMember = (uid?: string): Member | null => {
 };
 
 type Tab = 'today' | 'expiry' | 'products' | 'shelves' | 'more';
-type Sub = 'terms' | 'import' | 'settings' | 'data' | null;
+type Sub = 'terms' | 'import' | 'settings' | 'members' | 'data' | null;
 const TITLE: Record<Tab, string> = { today: 'Hôm nay', expiry: 'Hết hạn', products: 'Sản phẩm', shelves: 'Kệ', more: 'Khác' };
 const NAV: [Tab | 'add', string, IconName][] = [['today', 'Hôm nay', 'today'], ['expiry', 'Hết hạn', 'expiry'], ['add', 'Thêm lô', 'plus'], ['products', 'Sản phẩm', 'box'], ['shelves', 'Kệ', 'shelf']];
 
@@ -66,7 +67,8 @@ export default function App() {
     <main className="login page">
       <h1>Chưa vào cửa hàng</h1>
       <p>Tài khoản <b>{session?.user.email}</b> chưa thuộc cửa hàng nào.</p>
-      <p className="note">Nhờ quản trị viên thêm bạn vào cửa hàng rồi mở lại app. Nếu bạn là người đầu tiên, chạy đoạn SQL tạo cửa hàng ở cuối file supabase/schema.sql với email này.</p>
+      <p className="note">Gửi email này cho quản trị viên để được thêm vào cửa hàng (Khác → Thành viên), rồi bấm Thử lại.</p>
+      <button className="pri" onClick={() => location.reload()}>Thử lại</button>
       <button onClick={() => logout(0)}>Đăng xuất</button>
     </main>
   );
@@ -77,7 +79,7 @@ export default function App() {
     : tab === 'products' ? <Products member={me} onAdd={add} rev={rev} />
     : tab === 'shelves' ? <Shelves member={me} rev={rev} />
     : tab === 'today' ? <Today member={me} rev={rev} />
-    : <More member={me} email={session?.user.email} sub={sub} setSub={setSub} />;
+    : <More member={me} email={session?.user.email} uid={session?.user.id} sub={sub} setSub={setSub} />;
 
   return (
     <>
@@ -117,20 +119,21 @@ function logout(pending: number) {
 
 const ROLE: Record<Member['role'], string> = { admin: 'Quản trị', staff: 'Nhân viên', viewer: 'Chỉ xem' };
 
-function More({ member, email, sub, setSub }: { member: Member; email?: string; sub: Sub; setSub: (s: Sub) => void }) {
+function More({ member, email, uid, sub, setSub }: { member: Member; email?: string; uid?: string; sub: Sub; setSub: (s: Sub) => void }) {
   const s = useSync();
   const terms = useTerms(member.store_id);
   const admin = member.role === 'admin';
   if (sub) return (
     <>
       <button className="back" onClick={() => setSub(null)}><Icon name="back" size={20} />Khác</button>
-      {sub === 'terms' ? <Terms member={member} /> : sub === 'import' ? <Import member={member} /> : sub === 'settings' ? <Settings member={member} />
+      {sub === 'terms' ? <Terms member={member} /> : sub === 'import' ? <Import member={member} /> : sub === 'settings' ? <Settings member={member} /> : sub === 'members' ? <Members member={member} myId={uid} />
         : <><h2 className="title">Dữ liệu và sao lưu</h2><SyncPanel store={member.store_id} /><Backup store={member.store_id} /></>}
     </>
   );
   const items: [Exclude<Sub, null>, IconName, string, string][] = [
     ['terms', 'clipboard', 'Điều khoản đổi trả', 'Tra và sửa điều khoản của từng NCC, nhãn hàng'],
     ...(admin ? [
+      ['members', 'user', 'Thành viên', 'Thêm đồng nghiệp, chọn quyền'],
       ['import', 'upload', 'Nhập file', 'Danh mục Cadencia, Contact List'],
       ['settings', 'sliders', 'Cài đặt', terms ? `Giảm giá trước HSD ${terms.discountDays} ngày · báo trả sớm thêm ${terms.returnBuffer} ngày` : 'Mốc giảm giá, số ngày an toàn'],
     ] as [Exclude<Sub, null>, IconName, string, string][] : []),
