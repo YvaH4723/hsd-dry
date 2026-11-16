@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
-import { codeVariants, findByCode, pname, searchProducts, useShelves, useTerms, type Product } from '../lib/db.ts';
+import { codeVariants, findByCode, pname, PRODUCT_COLS, searchProducts, useShelves, useTerms, type Product } from '../lib/db.ts';
 import { actionFor } from '../lib/action.ts';
 import { addBatchOffline, isNet, loadBatches, updateBatchOffline } from '../lib/offline.ts';
 import { fmt } from '../lib/dates.ts';
@@ -138,6 +138,9 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
           </div>
           {hits && !hits.length && <p className="note">Không tìm thấy “{q.trim()}”.</p>}
           {hits && hits.length > 0 && <div className="list">{hits.map(p => <ProductRow key={p.id} p={p} onClick={() => unknown ? !busy && attach(p) : choose(p)} />)}</div>}
+          {unknown && (member.role === 'admin'
+            ? <NewProduct store={store} code={unknown} name={q} created={p => { choose(p); setMsg({ text: `Đã tạo sản phẩm và gắn mã ${unknown}. Lần sau quét là ra.`, tone: 'ok' }); }} />
+            : <p className="note">Không có trong danh mục thì nhờ quản trị viên tạo sản phẩm này.</p>)}
         </>
       )}
 
@@ -200,5 +203,49 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
         </section>
       )}
     </>
+  );
+}
+
+// Hàng mới chưa có trong file danh mục (file cũ hơn hàng trên kệ): tạo sản phẩm ngay tại chỗ, gắn luôn mã vừa quét.
+// Danh mục "Tạo trong app" không bị ẩn khi nhập lại file GTB.
+function NewProduct({ store, code, name: initName, created }: { store: string; code: string; name: string; created: (p: Product) => void }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [ax, setAx] = useState('');
+  const [price, setPrice] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  if (!open) return <button className="block" onClick={() => { setName(initName.trim()); setOpen(true); }}><Icon name="plus" size={18} />Không có trong danh sách? Tạo sản phẩm mới</button>;
+
+  async function save() {
+    setBusy(true); setErr('');
+    try {
+      const { data, error } = await supabase.from('products').insert({
+        store_id: store, name: name.trim(), ax_code: ax.trim() || null, price: parseInt(price.replace(/\D/g, '')) || null,
+        active: true, category: 'Tạo trong app',
+      }).select('id').single();
+      if (error) throw error;
+      const codes = (/^\d{11,12}$/.test(code) ? codeVariants(code) : [code]).map(c => ({ store_id: store, product_id: data.id, code: c }));
+      const b = await supabase.from('barcodes').upsert(codes, { onConflict: 'store_id,code', ignoreDuplicates: true });
+      if (b.error) throw b.error;
+      const { data: p, error: e2 } = await supabase.from('products').select(PRODUCT_COLS).eq('id', data.id).single();
+      if (e2) throw e2;
+      created(p as unknown as Product);
+    } catch (e: any) {
+      setErr(isNet(e) ? 'Đang mất mạng: tạo sản phẩm cần có mạng.' : /duplicate|unique/i.test(e.message) ? `Mã AX ${ax.trim()} đã có: gõ mã AX đó vào ô tìm ở trên để chọn.` : 'Lỗi: ' + e.message);
+    } finally { setBusy(false); }
+  }
+  return (
+    <div className="panel stack">
+      <h2>Tạo sản phẩm mới · mã <span className="num">{code}</span></h2>
+      <label className="lbl" htmlFor="np-name">Tên (như trên tem giá)</label>
+      <input id="np-name" value={name} onChange={e => setName(e.target.value)} placeholder="Ví dụ Cotobe Coconut Shell Candle Mango (150g)" />
+      <div className="grid2">
+        <div><label className="lbl" htmlFor="np-ax">Mã AX (nếu có)</label><input id="np-ax" value={ax} onChange={e => setAx(e.target.value.toUpperCase())} placeholder="H202107" /></div>
+        <div><label className="lbl" htmlFor="np-price">Giá</label><input id="np-price" inputMode="numeric" value={price} onChange={e => setPrice(e.target.value)} placeholder="250000" /></div>
+      </div>
+      <button className="pri block" disabled={busy || name.trim().length < 3} onClick={save}>{busy ? 'Đang tạo…' : 'Tạo và gắn mã'}</button>
+      {err && <p className="msg bad">{err}</p>}
+    </div>
   );
 }
