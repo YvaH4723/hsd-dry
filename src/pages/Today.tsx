@@ -2,74 +2,95 @@ import { useEffect, useState } from 'react';
 import { canWrite, type Member } from '../supabase.ts';
 import { pname, useTerms } from '../lib/db.ts';
 import { loadBatches, updateBatchOffline } from '../lib/offline.ts';
-import { actionFor, type Action, type LotProduct } from '../lib/action.ts';
-import { daysLeft, fmt } from '../lib/dates.ts';
-import ActionLine from '../components/ActionLine.tsx';
+import { actionFor, type Action } from '../lib/action.ts';
+import { daysLeft } from '../lib/dates.ts';
+import LotInfo, { LotsLoading, type LotRow } from '../components/Lot.tsx';
+import Icon from '../components/Icon.tsx';
 
-interface Lot { id: string; qty: number; expiry_date: string; expiry_note: string | null; status: string; shelves: { name: string } | null; products: LotProduct & { name: string; name_vi?: string | null; ax_code: string | null }; a: Action }
+type Item = { l: LotRow; a: Action };
+type Btn = [status: string, label: string, pri?: boolean];
 const SOON = 7;
+const DONE: Record<string, string> = { sold_out: 'Đã bán hết', discarded: 'Đã hủy', return_notified: 'Đã báo trả', discounted: 'Đã dán giảm giá', returned: 'NCC đã lấy', on_shelf: 'Đã đưa về trên kệ' };
 
-// "Hôm nay cần làm": quá HSD → quá ngày báo trả → báo trả trong 7 ngày → cần dán giảm giá.
-export default function Today({ member }: { member: Member }) {
-  const store = member.store_id;
+// "Hôm nay cần làm": quá HSD → quá ngày báo trả → báo trả trong 7 ngày → cần dán giảm giá → chờ NCC lấy.
+// Lô quá HSD chỉ nằm ở nhóm Quá HSD, không lặp ở nhóm khác.
+export default function Today({ member, rev }: { member: Member; rev?: number }) {
+  const store = member.store_id, write = canWrite(member);
   const terms = useTerms(store);
-  const [lots, setLots] = useState<Lot[] | null>(null);
+  const [lots, setLots] = useState<LotRow[] | null>(null);
   const [err, setErr] = useState('');
+  const [toast, setToast] = useState<{ text: string; undo?: () => void } | null>(null);
 
-  async function load() {
-    if (!terms) return;
+  const load = () => loadBatches(store, {}).then(d => { setErr(''); setLots(d); }, (e: Error) => setErr(e.message));
+  useEffect(() => { load(); }, [store, rev]);
+  useEffect(() => { if (toast) { const t = setTimeout(() => setToast(null), 6000); return () => clearTimeout(t); } }, [toast]);
+
+  async function mark(l: LotRow, status: string, undoable = true) {
+    const prev = l.status;
+    setLots(ls => ls && ls.map(x => x.id === l.id ? { ...x, status } : x));        // đổi ngay trên màn, gửi sau
     try {
-      const data = await loadBatches(store, {});
-      setErr('');
-      setLots(data.map(b => ({ ...b, a: actionFor(b, b.products, terms) })));
-    } catch (e: any) { setErr(e.message); }
-  }
-  useEffect(() => { load(); }, [terms]);
-
-  async function mark(l: Lot, status: string) {
-    await updateBatchOffline(store, l.id, { status }, status, { status: l.status });
+      await updateBatchOffline(store, l.id, { status }, status === 'on_shelf' ? 'undo' : status, { status: prev });
+      setToast({ text: `${DONE[status]}: ${pname(l.products)}`, undo: undoable ? () => { setToast(null); mark({ ...l, status }, prev, false); } : undefined });
+    } catch (e: any) { setErr('Chưa lưu được: ' + e.message); }
     load();
   }
 
-  if (!lots) return <p className="mute">{err || 'Đang tải…'}</p>;
-  const open = lots.filter(l => l.status === 'on_shelf');
-  const byDate = (x: Lot, y: Lot) => x.a.date.localeCompare(y.a.date);
-  const groups: [string, Lot[], 'return' | 'discount' | 'pickup' | null][] = [
-    ['Quá HSD', lots.filter(l => l.expiry_note !== 'action_date' && daysLeft(l.expiry_date) < 0), null],
-    ['Quá ngày báo trả', open.filter(l => l.a.kind !== 'discount' && daysLeft(l.a.date) < 0).sort(byDate), 'return'],
-    [`Báo trả trong ${SOON} ngày`, open.filter(l => l.a.kind !== 'discount' && daysLeft(l.a.date) >= 0 && daysLeft(l.a.date) <= SOON).sort(byDate), 'return'],
-    ['Cần dán giảm giá', open.filter(l => l.a.kind === 'discount' && daysLeft(l.a.date) <= SOON).sort(byDate), 'discount'],
-    ['Đã báo trả, chờ NCC lấy', lots.filter(l => l.status === 'return_notified').sort(byDate), 'pickup'],
+  if (!lots || !terms) return err ? <p className="msg bad">{err}</p> : <LotsLoading />;
+  const all: Item[] = lots.map(l => ({ l, a: actionFor(l, l.products, terms) }));
+  const expired = ({ l }: Item) => l.expiry_note !== 'action_date' && daysLeft(l.expiry_date) < 0;
+  const open = all.filter(x => x.l.status === 'on_shelf' && !expired(x));
+  const left = (x: Item) => daysLeft(x.a.date);
+  const byDate = (x: Item, y: Item) => x.a.date.localeCompare(y.a.date);
+  const groups: { title: string; tone: string; items: Item[]; btns: (x: Item) => Btn[] }[] = [
+    { title: 'Quá HSD', tone: 'bad', items: all.filter(x => expired(x) && (x.l.status === 'on_shelf' || x.l.status === 'discounted')),
+      btns: x => [['discarded', 'Đã hủy', true], ...(x.a.kind === 'return' ? [['return_notified', 'Đã báo trả'] as Btn] : []), SOLD] },
+    { title: 'Quá ngày báo trả', tone: 'bad', items: open.filter(x => x.a.kind !== 'discount' && left(x) < 0).sort(byDate), btns: retBtns },
+    { title: `Báo trả trong ${SOON} ngày`, tone: 'warn', items: open.filter(x => x.a.kind !== 'discount' && left(x) >= 0 && left(x) <= SOON).sort(byDate), btns: retBtns },
+    { title: 'Cần dán giảm giá', tone: 'warn', items: open.filter(x => x.a.kind === 'discount' && left(x) <= SOON).sort(byDate), btns: () => [['discounted', 'Đã dán giảm giá', true], SOLD] },
+    { title: 'Đã báo trả, chờ NCC lấy', tone: 'acc', items: all.filter(x => x.l.status === 'return_notified').sort(byDate), btns: () => [['returned', 'NCC đã lấy', true], ['on_shelf', 'Hoàn tác']] },
   ];
+  const todo = groups.reduce((n, g) => n + g.items.length, 0);
+  const today = new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
 
   return (
     <>
-      {err && <p className="bad">{err}</p>}
-      {groups.every(g => !g[1].length) && <p className="mute">Hôm nay không có việc gì.</p>}
-      {groups.filter(g => g[1].length).map(([title, items, kind]) => (
-        <div className="card" key={title}>
-          <b>{title} ({items.length})</b>
-          {items.map(l => (
-            <div className="item" key={l.id}>
-              <div>{pname(l.products)}</div>
-              <div className="mute">{l.expiry_note === 'action_date' ? 'Chưa có HSD' : `HSD ${fmt(l.expiry_date)}${l.expiry_note ? ' (ước tính)' : ''}`} · SL {l.qty}{l.shelves ? ' · ' + l.shelves.name : ''}</div>
-              <ActionLine a={l.a} status={l.status} />
-              {kind === 'pickup' && canWrite(member) && (
-                <div className="row" style={{ marginTop: 6 }}>
-                  <button className="pri" onClick={() => mark(l, 'returned')}>NCC đã lấy</button>
-                  <button onClick={() => mark(l, 'on_shelf')}>Hoàn tác</button>
-                </div>
-              )}
-              {kind && kind !== 'pickup' && canWrite(member) && (
-                <div className="row" style={{ marginTop: 6 }}>
-                  {(kind === 'return' || l.a.kind === 'reminder') && <button onClick={() => mark(l, 'return_notified')}>Đã báo trả</button>}
-                  {(kind === 'discount' || l.a.kind === 'reminder') && <button onClick={() => mark(l, 'discounted')}>Đã dán giảm giá</button>}
-                </div>
-              )}
-            </div>
-          ))}
+      <p className="summary">{today.charAt(0).toUpperCase() + today.slice(1)}{todo > 0 && <> · <b>{todo}</b> lô cần xử lý</>}</p>
+      {err && <p className="msg bad">{err}</p>}
+      {!todo && (
+        <div className="empty">
+          <Icon name="checkCircle" size={32} />
+          <b>Hôm nay không có việc gì</b>
+          <span>Lô sắp đến ngày báo trả hoặc dán giảm giá (trong {SOON} ngày) sẽ hiện ở đây.</span>
         </div>
+      )}
+      {groups.filter(g => g.items.length).map(g => (
+        <section className="grp" key={g.title}>
+          <div className="sec"><h2><span className={`dot ${g.tone}`} />{g.title}</h2><span className="cnt">{g.items.length} lô</span></div>
+          <div className="list">
+            {g.items.map(x => (
+              <div className="li li-body" key={x.l.id}>
+                <LotInfo l={x.l} a={x.a} />
+                {write && (
+                  <div className="actions">
+                    {g.btns(x).map(([status, label, pri]) => <button key={status} className={`sm ${pri ? 'pri' : ''}`} onClick={() => mark(x.l, status)}>{label}</button>)}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
       ))}
+      {toast && (
+        <div className="toast" role="status">
+          <span>{toast.text}</span>
+          {toast.undo && <button onClick={toast.undo}>Hoàn tác</button>}
+        </div>
+      )}
     </>
   );
 }
+
+// Lô báo trả (hoặc lô chưa có HSD, chỉ có ngày nhắc: chưa biết báo trả hay giảm giá nên cho cả hai nút).
+const retBtns = (x: Item): Btn[] => [['return_notified', 'Đã báo trả', true], ...(x.a.kind === 'reminder' ? [['discounted', 'Đã dán giảm giá'] as Btn] : []), SOLD];
+// Lên kệ kiểm thì hàng đã bán hết: bỏ lô khỏi danh sách.
+const SOLD: Btn = ['sold_out', 'Bán hết'];

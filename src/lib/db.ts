@@ -33,20 +33,28 @@ export async function findByCode(store: string, raw: string): Promise<Product | 
 }
 
 // Mọi sản phẩm có mã vạch khớp (mã 12/13 số), mỗi sản phẩm một lần.
-export async function searchByCode(store: string, code: string): Promise<{ data: Product[]; error: { message: string } | null }> {
+type Res = { data: Product[]; error: { message: string } | null };
+const fromLocal = async (f: () => Promise<Product[]>): Promise<Res> => {
+  try { return { data: await f(), error: null }; } catch (e: any) { return { data: [], error: { message: e.message } }; }
+};
+
+export async function searchByCode(store: string, code: string): Promise<Res> {
   const r = await supabase.from('barcodes').select(`products(${PRODUCT_COLS})`).eq('store_id', store).in('code', codeVariants(code)).is('deleted_at', null);
-  if (r.error && isNet(r.error)) { const p = await localFindByCode(code); return { data: p ? [p] : [], error: null }; }
+  if (r.error && isNet(r.error)) return fromLocal(async () => { const p = await localFindByCode(code); return p ? [p] : []; });
   const list = (r.data ?? []).map((b: any) => b.products).filter((p: any, i: number, a: any[]) => p && a.findIndex(x => x?.id === p.id) === i);
   return { data: list, error: r.error };
 }
 
-export async function searchProducts(store: string, q: string, limit = 50): Promise<{ data: Product[] | null; error: { message: string } | null }> {
-  const s = q.trim().replace(/[,()*%]/g, '');
-  const words = unaccent(s).split(/\s+/).join('*');
+// Tìm theo tên (Việt hoặc gốc, không dấu, từ nào trước cũng được) hoặc đầu mã AX.
+export async function searchProducts(store: string, q: string, limit = 50): Promise<Res> {
+  const s = q.trim().replace(/[,()*%"\\]/g, ' ').trim();
+  const words = unaccent(s).split(/\s+/).filter(Boolean);
+  if (!words.length) return { data: [], error: null };
+  const byName = words.map(w => `name_search.ilike.*${w}*`).join(',');
   const r = await supabase.from('products').select(PRODUCT_COLS).eq('store_id', store).is('deleted_at', null)
-    .or(`name_search.ilike.*${words}*,ax_code.ilike.${s}*`).order('active', { ascending: false }).limit(limit);
-  if (r.error && isNet(r.error)) return { data: await localSearch(s, limit), error: null };
-  return r as any;
+    .or(`and(${byName}),ax_code.ilike.${words[0]}*`).order('active', { ascending: false }).order('name').limit(limit);
+  if (r.error && isNet(r.error)) return fromLocal(() => localSearch(s, limit));
+  return { data: (r.data as unknown as Product[]) ?? [], error: r.error };
 }
 
 export const audit = (store: string, batch_id: string, action: string, before: unknown, after: unknown) => { auditOffline(store, batch_id, action, before, after); };
@@ -62,22 +70,40 @@ export function useShelves(store: string) {
 export const money = (n: number | null) => n == null ? '' : Number(n).toLocaleString('vi-VN') + 'đ';
 
 // Điều khoản + cài đặt của cửa hàng (mốc giảm giá, số ngày báo trả sớm cho an toàn).
+// Tải một lần, mọi màn dùng chung; sửa điều khoản / cài đặt thì gọi reloadTerms().
 import { indexTerms, type Cfg, type Term } from './action.ts';
 export const settingsOf = (s: any) => ({ discountDays: s?.discount_days ?? 45, returnBuffer: s?.return_buffer_days ?? 5 });
+let termsCache: { store: string; at: number; p: Promise<Cfg> } | null = null;
+const termSubs = new Set<() => void>();
+async function fetchTerms(store: string): Promise<Cfg> {
+  try {
+    const [t, s] = await Promise.all([
+      fetchAll<Term>((a, b) => supabase.from('terms').select('vendor_id,brand,product_id,action,days,raw_text,needs_review').eq('store_id', store).is('deleted_at', null).order('id').range(a, b)),
+      supabase.from('stores').select('*').eq('id', store).single().then(ok),
+    ]);
+    return { idx: indexTerms(t), ...settingsOf(s) };
+  } catch (e) {
+    if (!isNet(e)) throw e;
+    const l = await localTerms();
+    return { idx: indexTerms(l.terms), ...settingsOf(l.store) };
+  }
+}
+export function reloadTerms() { termsCache = null; termSubs.forEach(f => f()); }
 export function useTerms(store: string): (Cfg & { reload: () => void }) | null {
   const [state, setState] = useState<Cfg | null>(null);
   const [n, setN] = useState(0);
   useEffect(() => {
-    Promise.all([
-      fetchAll<Term>((a, b) => supabase.from('terms').select('vendor_id,brand,product_id,action,days,raw_text,needs_review').eq('store_id', store).is('deleted_at', null).order('id').range(a, b)),
-      supabase.from('stores').select('*').eq('id', store).single().then(ok),
-    ]).then(([t, s]) => setState({ idx: indexTerms(t), ...settingsOf(s) }), async e => {
-      if (!isNet(e)) return;
-      const l = await localTerms();
-      setState({ idx: indexTerms(l.terms), ...settingsOf(l.store) });
-    });
+    const bump = () => setN(x => x + 1);
+    termSubs.add(bump);
+    return () => { termSubs.delete(bump); };
+  }, []);
+  useEffect(() => {
+    if (!termsCache || termsCache.store !== store || Date.now() - termsCache.at > 5 * 60000) termsCache = { store, at: Date.now(), p: fetchTerms(store) };
+    let live = true;
+    termsCache.p.then(c => live && setState(c), () => { termsCache = null; if (live) setState({ idx: new Map(), ...settingsOf(null) }); });
+    return () => { live = false; };
   }, [store, n]);
-  return state && { ...state, reload: () => setN(x => x + 1) };
+  return state && { ...state, reload: reloadTerms };
 }
 
 // Tên hiển thị: tên tiếng Việt nếu có, không thì tên gốc trong file.

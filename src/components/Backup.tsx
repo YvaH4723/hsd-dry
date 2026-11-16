@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../supabase.ts';
-import { fetchAll } from '../lib/offline.ts';
+import { fetchAll, isNet } from '../lib/offline.ts';
 import { pname, settingsOf } from '../lib/db.ts';
 import { actionFor, indexTerms, type Term } from '../lib/action.ts';
 
@@ -55,16 +55,16 @@ export default function Backup({ store }: { store: string }) {
       const d = new Date(), stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
       XLSX.writeFile(wb, `hsd-dry-sao-luu-${stamp}.xlsx`);
       setMsg(`Đã xuất: ${lots.length} lô, ${products.length} sản phẩm, ${terms.length} điều khoản.`);
-    } catch (e: any) { setMsg('Lỗi: ' + e.message); }
+    } catch (e: any) { setMsg(isNet(e) ? 'Lỗi: đang mất mạng, cần có mạng để sao lưu.' : 'Lỗi: ' + e.message); }
     setBusy(false);
   }
 
   return (
-    <div className="card">
-      <b>Sao lưu</b>
-      <p className="mute" style={{ margin: '6px 0' }}>Tải toàn bộ lô, sản phẩm, điều khoản, NCC, kệ về một file Excel. Nên làm mỗi tuần một lần và cất file vào Google Drive.</p>
-      <button className="pri" style={{ width: '100%' }} disabled={busy} onClick={run}>Xuất toàn bộ ra Excel</button>
-      {msg && <p className={msg.startsWith('Lỗi') ? 'bad' : 'mute'}>{msg}</p>}
+    <div className="panel">
+      <h2>Sao lưu</h2>
+      <p className="note">Tải toàn bộ lô, sản phẩm, điều khoản, NCC, kệ về một file Excel. Nên làm mỗi tuần một lần và cất file vào Google Drive.</p>
+      <button className="pri block" disabled={busy} onClick={run}>{busy ? 'Đang xuất…' : 'Xuất toàn bộ ra Excel'}</button>
+      {msg && <p className={msg.startsWith('Lỗi') ? 'msg bad' : 'note'}>{msg}</p>}
     </div>
   );
 }

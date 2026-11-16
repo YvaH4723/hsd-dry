@@ -4,7 +4,8 @@ import { diffCatalog, mapRow, type Existing, type Preview } from '../lib/cadenci
 
 const mapAll = (rows: Record<string, unknown>[]) => rows.map(mapRow).filter(i => i.ax);
 import { resolveVendors, type VendorTerm } from '../lib/terms.ts';
-import { fetchAll } from '../lib/db.ts';
+import { fetchAll, reloadTerms } from '../lib/db.ts';
+import { refreshSnapshot } from '../lib/offline.ts';
 
 const chunks = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 
@@ -91,21 +92,23 @@ export default function Import({ member }: { member: Member }) {
         unchanged: prev.unchanged, errors: prev.errors.length, hidden: prev.hidden.length });
       setMsg(`Xong: thêm ${prev.added.length}, cập nhật ${prev.updated.length}, ẩn ${prev.hidden.length}.`);
       setPrev(null); setRows([]);
+      refreshSnapshot(store);                  // bản sao trên máy (dùng khi mất mạng) lấy danh mục mới
     } catch (e: any) { setMsg('Lỗi khi ghi (chưa ghi hết, chọn lại file để làm tiếp): ' + e.message); }
     setBusy(false);
   }
 
   return (
     <>
+      <h2 className="title">Nhập file</h2>
       <ContactImport store={store} />
-      <div className="card">
-        <b>Nhập danh mục GTB Cadencia</b>
-        <p className="mute">Chỉ cập nhật tên, giá, NCC. Không đụng lô HSD, ảnh, kệ. Sản phẩm không còn trong file sẽ bị ẩn, không xóa.</p>
-        <input type="file" accept=".xlsx,.xls" disabled={busy} onChange={e => pick(e.target.files?.[0])} />
+      <div className="panel">
+        <h2>Danh mục GTB Cadencia</h2>
+        <p className="note">Chỉ cập nhật tên, giá, NCC, mã vạch. Không đụng lô HSD, kệ. Sản phẩm không còn trong file sẽ bị ẩn, không xóa.</p>
+        <input type="file" accept=".xlsx,.xls" aria-label="Chọn file Cadencia" disabled={busy} onChange={e => pick(e.target.files?.[0])} />
+        {msg && <p className={msg.startsWith('Lỗi') ? 'msg bad' : 'note'}>{msg}</p>}
       </div>
-      {msg && <p className={msg.startsWith('Lỗi') ? 'bad' : 'mute'}>{msg}</p>}
       {prev && (
-        <div className="card">
+        <div className="panel">
           <div className="stats">
             <div><b className="ok">{prev.added.length}</b>Thêm mới</div>
             <div><b>{prev.updated.length}</b>Cập nhật</div>
@@ -113,13 +116,11 @@ export default function Import({ member }: { member: Member }) {
             <div><b className="warn">{prev.hidden.length}</b>Sẽ ẩn</div>
             <div><b className="bad">{prev.errors.length}</b>Lỗi (bỏ qua)</div>
           </div>
-          <p className="mute">{rows.length} dòng trong file.</p>
-          {prev.updated.slice(0, 10).map(u => <div className="item mute" key={u.item.ax}>{u.item.ax} {u.item.name}: đổi {u.changes.join(', ')}</div>)}
-          {prev.hidden.slice(0, 10).map(h => <div className="item warn" key={h.ax}>Ẩn: {h.ax} {h.name}</div>)}
-          {prev.errors.slice(0, 20).map(e => <div className="item bad" key={e.row}>Dòng {e.row}: {e.reason}</div>)}
-          <button className="pri" style={{ width: '100%', marginTop: 12 }} disabled={busy} onClick={apply}>
-            Xác nhận ghi
-          </button>
+          <p className="note">{rows.length} dòng trong file.</p>
+          {prev.updated.slice(0, 10).map(u => <p className="note" key={u.item.ax}>{u.item.ax} {u.item.name}: đổi {u.changes.join(', ')}</p>)}
+          {prev.hidden.slice(0, 10).map(h => <p className="note warn" key={h.ax}>Ẩn: {h.ax} {h.name}</p>)}
+          {prev.errors.slice(0, 20).map(e => <p className="note bad" key={e.row}>Dòng {e.row}: {e.reason}</p>)}
+          <button className="pri block" disabled={busy} onClick={apply}>Xác nhận ghi</button>
         </div>
       )}
     </>
@@ -168,26 +169,27 @@ function ContactImport({ store }: { store: string }) {
       await supabase.from('import_runs').insert({ store_id: store, kind: 'contact_list', added: ins.length, updated: upd.length, unchanged: kept });
       setMsg(`Xong: thêm ${ins.length}, cập nhật ${upd.length}, giữ nguyên ${kept} điều khoản đã sửa tay.`);
       setVt(null);
+      reloadTerms(); refreshSnapshot(store);
     } catch (e: any) { setMsg('Lỗi khi ghi: ' + e.message); }
     setBusy(false);
   }
 
   const n = (f: (v: VendorTerm) => boolean) => vt?.filter(f).length ?? 0;
   return (
-    <div className="card">
-      <b>Nhập điều khoản (Contact List)</b>
-      <p className="mute">Đọc sheet DRY. Không lấy tên buyer. Điều khoản đã sửa tay trong app được giữ nguyên.</p>
-      <input type="file" accept=".xlsx,.xls" disabled={busy} onChange={e => pick(e.target.files?.[0])} />
-      {msg && <p className={msg.startsWith('Lỗi') ? 'bad' : 'mute'}>{msg}</p>}
+    <div className="panel">
+      <h2>Điều khoản đổi trả (Contact List)</h2>
+      <p className="note">Đọc sheet DRY. Không lấy tên buyer. Điều khoản đã sửa tay trong app được giữ nguyên.</p>
+      <input type="file" accept=".xlsx,.xls" aria-label="Chọn file Contact List" disabled={busy} onChange={e => pick(e.target.files?.[0])} />
+      {msg && <p className={msg.startsWith('Lỗi') ? 'msg bad' : 'note'}>{msg}</p>}
       {vt && (
         <>
-          <div className="stats" style={{ marginTop: 10 }}>
+          <div className="stats">
             <div><b>{vt.length}</b>NCC</div>
             <div><b className="ok">{n(v => !v.review && v.action === 'return')}</b>Báo trả</div>
             <div><b>{n(v => !v.review && v.action === 'discount')}</b>Giảm giá</div>
             <div><b className="warn">{n(v => v.review)}</b>Cần chọn tay</div>
           </div>
-          <button className="pri" style={{ width: '100%', marginTop: 12 }} disabled={busy} onClick={apply}>Xác nhận ghi</button>
+          <button className="pri block" disabled={busy} onClick={apply}>Xác nhận ghi</button>
         </>
       )}
     </div>

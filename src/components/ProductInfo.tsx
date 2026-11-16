@@ -1,15 +1,35 @@
 import { useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
 import { money, pname, type Product } from '../lib/db.ts';
+import { isNet } from '../lib/offline.ts';
 import { describeTerm, termAt, termFor, type Cfg } from '../lib/action.ts';
 import { TermEditor } from '../pages/Terms.tsx';
+import Icon from './Icon.tsx';
 
 // Bỏ bản mã có thêm số 0 do app tự tạo cho mã UPC, để danh sách mã gọn.
 export const showCodes = (p: Product) => (p.barcodes ?? []).map(b => b.code).filter((c, _, all) => !all.some(o => o !== c && c === '0' + o)).join(', ') || 'Chưa có mã vạch';
 export const vendorText = (p: Product) => !p.vendors ? 'Chưa có NCC' : p.vendors.code.startsWith('TB-') ? `${p.vendors.name} (chưa có mã NCC)` : `${p.vendors.name} · ${p.vendors.code}`;
 
-// Thẻ thông tin sản phẩm: hiện ngay khi quét / gõ mã. Quản trị viên sửa được điều khoản NCC và cờ không đổi trả / Sành Điệu tại chỗ.
-export default function ProductInfo({ p, member, terms, onChange }: { p: Product; member: Member; terms: (Cfg & { reload: () => void }) | null; onChange?: (p: Product) => void }) {
+// Một dòng sản phẩm trong kết quả tìm.
+export function ProductRow({ p, onClick }: { p: Product; onClick: () => void }) {
+  return (
+    <div className="li">
+      <button className="li-main" onClick={onClick}>
+        <div className="grow">
+          <div className="lot-name">{pname(p)}</div>
+          {p.name_vi && <div className="note">{p.name}</div>}
+          <div className="note num">{[p.ax_code, p.brand, money(p.price)].filter(Boolean).join(' · ')}</div>
+          <div className="note">NCC: {vendorText(p)}{!p.active && <span className="warn"> · không có trong Cadencia</span>}</div>
+        </div>
+        <Icon name="chev" size={18} />
+      </button>
+    </div>
+  );
+}
+
+// Thẻ thông tin sản phẩm: hiện ngay khi quét / gõ mã. Quản trị viên sửa được tên tiếng Việt, điều khoản NCC,
+// cờ không đổi trả / Sành Điệu ngay tại chỗ.
+export default function ProductInfo({ p, member, terms, onChange }: { p: Product; member: Member; terms: Cfg | null; onChange?: (p: Product) => void }) {
   const admin = member.role === 'admin';
   const [edit, setEdit] = useState(false);
   const [err, setErr] = useState('');
@@ -18,48 +38,52 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
 
   async function set(patch: Partial<Product>) {
     const { error } = await supabase.from('products').update(patch).eq('id', p.id);
-    if (error) return setErr(error.message);
+    if (error) return setErr(isNet(error) ? 'Đang mất mạng: sửa sản phẩm cần có mạng.' : 'Lỗi: ' + error.message);
     setErr(''); onChange?.({ ...p, ...patch });
   }
-  const flag = (field: 'no_return' | 'sanh_dieu', value: boolean) => set({ [field]: value });
 
   return (
-    <div>
-      {vi === null ? (
-        <div className={admin ? 'click' : ''} onClick={() => admin && setVi(p.name_vi ?? '')}>
-          <b>{pname(p)}</b> {!p.active && <span className="warn">(không có trong Cadencia)</span>}
-          {admin && <span className="mute"> ✎</span>}
+    <div className="pi">
+      <div className="pi-head">
+        <div>
+          {vi === null ? <h2 className="pi-name">{pname(p)}</h2> : (
+            <form className="row" onSubmit={e => { e.preventDefault(); set({ name_vi: vi.trim() || null }); setVi(null); }}>
+              <input className="grow" autoFocus aria-label="Tên tiếng Việt" placeholder="Tên tiếng Việt" value={vi} onChange={e => setVi(e.target.value)} />
+              <button type="submit" className="pri">Lưu</button>
+              <button type="button" className="icon" aria-label="Hủy" onClick={() => setVi(null)}><Icon name="x" /></button>
+            </form>
+          )}
+          {p.name_vi && <p className="pi-sub">{p.name}</p>}
+          <p className="pi-sub num">{[p.ax_code, p.brand, p.category].filter(Boolean).join(' · ')}</p>
         </div>
-      ) : (
-        <div className="row">
-          <input autoFocus placeholder="Tên tiếng Việt" value={vi} onChange={e => setVi(e.target.value)} />
-          <button style={{ flex: '0 0 auto' }} onClick={() => { set({ name_vi: vi.trim() || null }); setVi(null); }}>Lưu</button>
+        {admin && vi === null && <button className="icon" aria-label="Sửa tên tiếng Việt" onClick={() => setVi(p.name_vi ?? '')}><Icon name="edit" /></button>}
+      </div>
+      <div className="row" style={{ flexWrap: 'wrap' }}>
+        {p.price == null ? <span className="note">Chưa có giá</span> : <span className="pi-price num">{money(p.price)}</span>}
+        {!p.active && <span className="pill warn">Không có trong Cadencia</span>}
+      </div>
+      <dl className="facts">
+        <dt>NCC</dt><dd>{vendorText(p)}</dd>
+        <dt>Mã vạch</dt><dd className="num">{showCodes(p)}</dd>
+      </dl>
+      {t && terms && (
+        <div className={`term ${t.problem ? 'warn' : ''}`}>
+          <Icon name={t.problem ? 'alert' : t.kind === 'return' ? 'truck' : 'tag'} size={18} />
+          <div>{describeTerm(t, terms)}{t.raw && t.problem && <div className="note">Câu gốc: {t.raw}</div>}</div>
         </div>
       )}
-      {p.name_vi && <div className="mute">{p.name}</div>}
-      <div className="mute">{[p.ax_code, p.brand, p.category].filter(Boolean).join(' · ')}</div>
-      <div>Giá: <b>{money(p.price) || 'chưa có'}</b></div>
-      <div className="mute">Mã vạch: {showCodes(p)}</div>
-      <div>NCC: {vendorText(p)}</div>
-      {t && terms && <div className={t.problem ? 'warn' : 'ok'}>{describeTerm(t, terms)}{t.raw && t.problem ? `. Câu gốc: ${t.raw}` : ''}</div>}
       {admin && (
-        <div style={{ marginTop: 6 }}>
-          {p.vendors && <button onClick={() => setEdit(!edit)}>{t?.problem ? 'Đặt điều khoản cho NCC này' : 'Sửa điều khoản NCC'}</button>}
-          <label className="row" style={{ margin: '8px 0 0', color: 'var(--ink)' }}>
-            <input type="checkbox" style={{ width: 'auto', flex: '0 0 auto' }} checked={p.no_return} onChange={e => flag('no_return', e.target.checked)} />
-            <span>Sản phẩm này không đổi trả (dán giảm giá)</span>
-          </label>
-          <label className="row" style={{ margin: '4px 0 0', color: 'var(--ink)' }}>
-            <input type="checkbox" style={{ width: 'auto', flex: '0 0 auto' }} checked={p.sanh_dieu} onChange={e => flag('sanh_dieu', e.target.checked)} />
-            <span>Hàng Sành Điệu</span>
-          </label>
-        </div>
+        <details className="more" open={!!t?.problem}>
+          <summary>Điều khoản và cờ sản phẩm</summary>
+          {p.vendors && p.vendor_id && (edit && terms
+            ? <TermEditor store={member.store_id} vendor={{ id: p.vendor_id, code: p.vendors.code, name: p.vendors.name }}
+                main={termAt(terms.idx, p.vendor_id) ?? undefined} done={() => setEdit(false)} />
+            : <button className="sm" onClick={() => setEdit(true)}>{t?.problem ? 'Đặt điều khoản cho NCC này' : 'Sửa điều khoản NCC'}</button>)}
+          <label className="check"><input type="checkbox" checked={p.no_return} onChange={e => set({ no_return: e.target.checked })} />Sản phẩm này không đổi trả (dán giảm giá)</label>
+          <label className="check"><input type="checkbox" checked={p.sanh_dieu} onChange={e => set({ sanh_dieu: e.target.checked })} />Hàng Sành Điệu</label>
+        </details>
       )}
-      {edit && p.vendor_id && p.vendors && terms && (
-        <TermEditor store={member.store_id} vendor={{ id: p.vendor_id, code: p.vendors.code, name: p.vendors.name }}
-          main={termAt(terms.idx, p.vendor_id) ?? undefined} done={() => { setEdit(false); terms.reload(); }} />
-      )}
-      {err && <p className="bad">{err}</p>}
+      {err && <p className="msg bad">{err}</p>}
     </div>
   );
 }

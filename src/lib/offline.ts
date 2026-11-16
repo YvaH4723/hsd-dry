@@ -28,6 +28,9 @@ async function put(k: string, v: unknown): Promise<void> {
 
 // ---------- tiện ích ----------
 export const isNet = (e: unknown) => !navigator.onLine || /failed to fetch|load failed|networkerror|network request failed|fetch failed/i.test(String((e as any)?.message ?? e));
+// Phiên đăng nhập hết hạn / chưa đọc lại được: không phải máy chủ từ chối thật, giữ thay đổi lại để gửi sau.
+const isAuth = (e: any) => /jwt|PGRST30[0-3]|not authenticated|invalid claim/i.test(`${e?.code ?? ''} ${e?.message ?? ''}`) || e?.status === 401;
+const NO_SNAPSHOT = 'Đang mất mạng và máy này chưa có dữ liệu. Mở app một lần khi có mạng để tải dữ liệu về máy.';
 export const codeVariants = (c: string) => [...new Set([c, '0' + c, c.replace(/^0/, '')])].filter(x => x.length >= 6);
 
 export async function fetchAll<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
@@ -88,13 +91,15 @@ export async function refreshSnapshot(store: string) {
 }
 
 export async function localFindByCode(raw: string): Promise<Product | null> {
-  const { byCode, byAx } = await local();
+  const { products, byCode, byAx } = await local();
+  if (!products.length) throw new Error(NO_SNAPSHOT);
   const c = raw.trim();
   for (const v of codeVariants(c)) { const p = byCode.get(v); if (p) return p; }
   return byAx.get(c.toUpperCase()) ?? byCode.get(c) ?? null;
 }
 export async function localSearch(q: string, limit = 50): Promise<Product[]> {
   const { products } = await local();
+  if (!products.length) throw new Error(NO_SNAPSHOT);
   const words = unaccent(q.trim()).split(/\s+/).filter(Boolean), ax = q.trim().toUpperCase();
   return products.filter(p => (p.ax_code ?? '').toUpperCase().startsWith(ax) || words.every(w => ((p as any).name_search ?? unaccent(p.name)).includes(w)))
     .sort((a, b) => Number(b.active) - Number(a.active)).slice(0, limit);
@@ -123,6 +128,9 @@ function withOutbox<T>(fn: (box: Op[]) => Promise<[Op[], T]> | [Op[], T]): Promi
 let flushing: Promise<void> | null = null;
 export function flush(): Promise<void> {
   return flushing ??= (async () => {
+    if (!navigator.onLine) return;
+    const { data } = await supabase.auth.getSession();
+    if (!data.session) return;                                          // chưa đăng nhập lại được: giữ nguyên hàng đợi
     for (;;) {
       const op = (await get<Op[]>('outbox'))?.[0];
       if (!op) break;
@@ -130,7 +138,7 @@ export function flush(): Promise<void> {
         op.kind === 'insert' ? await supabase.from('batches').upsert(op.row, { onConflict: 'id', ignoreDuplicates: true })
         : op.kind === 'update' ? await supabase.from('batches').update(op.patch).eq('id', op.id)
         : await supabase.from('audit_log').insert(op.row);
-      if (error && isNet(error)) break;                                 // vẫn mất mạng: giữ lại, thử sau
+      if (error && (isNet(error) || isAuth(error))) break;              // mất mạng / phiên hết hạn: giữ lại, thử sau
       if (error) {                                                      // máy chủ từ chối: bỏ thao tác, báo cho người dùng
         const f = [...state.failed, `${op.kind === 'insert' ? 'Thêm lô' : op.kind === 'update' ? 'Sửa lô' : 'Nhật ký'}: ${error.message}`];
         await put('failed', f); emit({ failed: f });
@@ -142,9 +150,10 @@ export function flush(): Promise<void> {
 
 async function enqueue(...ops: Op[]) {
   await withOutbox(box => [[...box, ...ops], null]);
+  const left = async () => ((await get<Op[]>('outbox')) ?? []).some(b => ops.some(o => o.opId === b.opId));
   await flush();
-  const box = (await get<Op[]>('outbox')) ?? [];
-  return { offline: ops.some(o => box.some(b => b.opId === o.opId)) };
+  if (await left()) await flush();       // lần gửi trước vừa kết thúc đúng lúc thêm vào: gửi lại một lượt
+  return { offline: await left() };
 }
 
 const uid = () => crypto.randomUUID();
@@ -173,7 +182,9 @@ export async function loadBatches(store: string, f: { shelfId?: string; productI
     if (!f.shelfId && !f.productId) await put('batches', rows);
   } catch (e) {
     if (!isNet(e)) throw e;
-    rows = (await get<any[]>('batches')) ?? [];
+    const saved = await get<any[]>('batches');
+    if (!saved) throw new Error(NO_SNAPSHOT);
+    rows = saved;
   }
   return applyOutbox(rows, (await get<Op[]>('outbox')) ?? [], f);
 }

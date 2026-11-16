@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getDetector } from '../lib/scanner.ts';
+import Icon from './Icon.tsx';
 
 // Màn quét duy nhất của app. Chỉ bật camera khi bấm nút; giữ camera mở để quét liên tục nhiều món
 // (iPhone hay hỏi lại quyền mỗi lần bật). Rời app thì tắt, quay lại thì tự mở lại. Luôn có ô gõ mã và chụp ảnh.
@@ -26,17 +27,21 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
   async function start() {
     if (stream.current || starting.current) return;
     starting.current = true;
+    let s: MediaStream | undefined;
     try {
       setMsg('Đang mở camera…');
-      const det = await getDetector();
-      const s = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+      // Tải bộ đọc mã và mở camera cùng lúc cho nhanh.
+      const detP = getDetector();
+      detP.catch(() => {});
+      s = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+      const det = await detP;
       // Bấm Tắt hoặc rời màn trong lúc đang mở camera: nhả camera ngay.
       if (!want.current || !alive.current || document.hidden) { s.getTracks().forEach(t => t.stop()); setMsg(''); return; }
       stream.current = s; setOn(true); setMsg('');
-      const v = video.current!; v.srcObject = s; await v.play().catch(() => {});
+      const v = video.current!, cur = s; v.srcObject = s; await v.play().catch(() => {});
       s.getVideoTracks()[0].addEventListener('ended', () => { stop(); setMsg('Camera bị ngắt. Bấm Bật camera lại.'); });
       const loop = async () => {
-        if (stream.current !== s) return;
+        if (stream.current !== cur) return;
         if (v.readyState >= 2) {
           try { const r = await det.detect(v); if (r[0]) emit(r[0].rawValue); } catch { /* khung hỏng, bỏ qua */ }
         }
@@ -44,6 +49,7 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
       };
       loop();
     } catch (e: any) {
+      if (s && stream.current !== s) s.getTracks().forEach(t => t.stop());
       setMsg(e?.name === 'NotAllowedError' ? 'Chưa cho phép camera. Bật quyền camera cho trang này rồi thử lại, hoặc gõ mã / chụp ảnh.' : 'Không mở được camera: ' + (e?.message ?? e));
       want.current = false;
     } finally { starting.current = false; }
@@ -67,21 +73,23 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
       r[0] ? emit(r[0].rawValue) : setMsg('Không đọc được mã trong ảnh. Chụp gần, đủ sáng, giữ thẳng.');
     } catch (e: any) { setMsg('Lỗi đọc ảnh: ' + e.message); }
   }
+  const submit = () => { const t = typed.trim(); if (t) { cb.current(t); setTyped(''); } };
 
   return (
-    <div className="card">
-      <video ref={video} playsInline muted style={{ width: '100%', borderRadius: 10, display: on ? 'block' : 'none', background: '#000', maxHeight: '40vh', objectFit: 'cover' }} />
-      <div className="row" style={{ marginTop: 8 }}>
-        {on ? <button onClick={() => { want.current = false; stop(); }}>Tắt camera</button>
-            : <button className="pri" onClick={() => { want.current = true; start(); }}>Bật camera</button>}
-        <label className="btnlike">Chụp ảnh mã<input type="file" accept="image/*" capture="environment" hidden onChange={e => { photo(e.target.files?.[0]); e.target.value = ''; }} /></label>
+    <div className="panel scanner">
+      <div className="viewport" hidden={!on}><video ref={video} playsInline muted /><div className="guide" /></div>
+      <div className="row">
+        {on ? <button className="grow" onClick={() => { want.current = false; stop(); }}><Icon name="x" size={18} />Tắt camera</button>
+            : <button className="pri grow" onClick={() => { want.current = true; start(); }}><Icon name="camera" size={18} />Bật camera</button>}
+        <label className="btnlike"><Icon name="image" size={18} />Chụp ảnh<input type="file" accept="image/*" capture="environment" hidden onChange={e => { photo(e.target.files?.[0]); e.target.value = ''; }} /></label>
       </div>
-      <div className="row" style={{ marginTop: 8 }}>
-        <input enterKeyHint="search" placeholder="Gõ mã vạch, mã AX hoặc tên" value={typed} onChange={e => setTyped(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && typed.trim()) { cb.current(typed.trim()); setTyped(''); } }} />
-        <button style={{ flex: '0 0 auto' }} disabled={!typed.trim()} onClick={() => { cb.current(typed.trim()); setTyped(''); }}>Tìm</button>
-      </div>
-      {msg && <p className="mute">{msg}</p>}
+      <form className="row" onSubmit={e => { e.preventDefault(); submit(); }}>
+        <div className="search grow"><Icon name="search" size={18} />
+          <input enterKeyHint="search" aria-label="Gõ mã vạch, mã AX hoặc tên" placeholder="Mã vạch, mã AX hoặc tên" value={typed} onChange={e => setTyped(e.target.value)} />
+        </div>
+        <button type="submit" disabled={!typed.trim()}>Tìm</button>
+      </form>
+      {msg && <p className="note" role="status">{msg}</p>}
     </div>
   );
 }

@@ -11,7 +11,7 @@ export interface Cfg { idx: Map<string, Term>; discountDays: number; returnBuffe
 export interface TermInfo { kind: 'return' | 'discount'; days: number | null; problem?: string; why?: string; raw?: string | null; level?: 'product' | 'brand' | 'vendor' }
 export interface Action { kind: 'return' | 'discount' | 'reminder'; date: string; label?: string; raw?: string | null }
 
-const OWN_BRAND = new Set(['AFF01', 'SG99']);   // Ân Nam, Annam Gourmet: luôn dán giảm giá
+export const OWN_BRAND = new Set(['AFF01', 'SG99']);   // Ân Nam, Annam Gourmet: luôn dán giảm giá
 const key = (v: string, brand: string | null, product: string | null) => `${v}|${(brand ?? '').trim().toLowerCase()}|${product ?? ''}`;
 
 export const indexTerms = (terms: Term[]) => new Map(terms.map(t => [key(t.vendor_id, t.brand, t.product_id), t]));
