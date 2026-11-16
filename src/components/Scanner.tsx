@@ -4,6 +4,10 @@ import Icon from './Icon.tsx';
 
 // Màn quét duy nhất của app. Chỉ bật camera khi bấm nút; giữ camera mở để quét liên tục nhiều món
 // (iPhone hay hỏi lại quyền mỗi lần bật). Rời app thì tắt, quay lại thì tự mở lại. Luôn có ô gõ mã và chụp ảnh.
+// Trình duyệt nằm trong Zalo / Facebook / Messenger / Instagram / TikTok hay phóng camera toàn màn hình.
+const ua = navigator.userAgent;
+const INAPP = /Zalo/i.test(ua) ? 'Zalo' : /FBAN|FBAV|FB_IAB|Messenger/i.test(ua) ? 'Facebook / Messenger' : /Instagram/i.test(ua) ? 'Instagram' : /musical_ly|TikTok/i.test(ua) ? 'TikTok' : /; wv\)/.test(ua) ? 'một ứng dụng khác' : '';
+
 export default function Scanner({ onCode }: { onCode: (code: string) => void }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -38,7 +42,9 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
       // Bấm Tắt hoặc rời màn trong lúc đang mở camera: nhả camera ngay.
       if (!want.current || !alive.current || document.hidden) { s.getTracks().forEach(t => t.stop()); setMsg(''); return; }
       stream.current = s; setOn(true); setMsg('');
-      const v = video.current!, cur = s; v.srcObject = s; await v.play().catch(() => {});
+      const v = video.current!, cur = s;
+      // Một số máy / trình duyệt cũ tự phóng video toàn màn hình nếu thiếu các thuộc tính này.
+      v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', ''); v.muted = true; v.srcObject = s; await v.play().catch(() => {});
       s.getVideoTracks()[0].addEventListener('ended', () => { stop(); setMsg('Camera bị ngắt. Bấm Bật camera lại.'); });
       const loop = async () => {
         if (stream.current !== cur) return;
@@ -77,7 +83,8 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
 
   return (
     <div className="panel scanner">
-      <div className="viewport" hidden={!on}><video ref={video} playsInline muted /><div className="guide" /></div>
+      {INAPP && <p className="msg warn">Bạn đang mở app trong {INAPP}, camera có thể bị bật toàn màn hình rồi tắt. Bấm nút ⋯ ở góc → "Mở bằng trình duyệt" (Chrome / Safari), rồi thêm app ra màn hình chính.</p>}
+      <div className="viewport" hidden={!on}><video ref={video} playsInline muted autoPlay disablePictureInPicture controls={false} /><div className="guide" /></div>
       <div className="row">
         {on ? <button className="grow" onClick={() => { want.current = false; stop(); }}><Icon name="x" size={18} />Tắt camera</button>
             : <button className="pri grow" onClick={() => { want.current = true; start(); }}><Icon name="camera" size={18} />Bật camera</button>}
