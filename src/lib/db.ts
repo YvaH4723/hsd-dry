@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabase.ts';
 import { unaccent } from './cadencia.ts';
-import { auditOffline, codeVariants, fetchAll, isNet, localFindByCode, localSearch, localShelves, localTerms } from './offline.ts';
+import { auditOffline, codeVariants, fetchAll, isNet, localByVendor, localFindByCode, localSearch, localShelves, localTerms, localVendors } from './offline.ts';
 export { BATCH_COLS, codeVariants, fetchAll } from './offline.ts';
 
 export interface Product {
@@ -46,15 +46,30 @@ export async function searchByCode(store: string, code: string): Promise<Res> {
 }
 
 // Tìm theo tên (Việt hoặc gốc, không dấu, từ nào trước cũng được) hoặc đầu mã AX.
-export async function searchProducts(store: string, q: string, limit = 50): Promise<Res> {
+export async function searchProducts(store: string, q: string, limit = 50, vendorId?: string): Promise<Res> {
   const s = q.trim().replace(/[,()*%"\\]/g, ' ').trim();
   const words = unaccent(s).split(/\s+/).filter(Boolean);
   if (!words.length) return { data: [], error: null };
   const byName = words.map(w => `name_search.ilike.*${w}*`).join(',');
-  const r = await supabase.from('products').select(PRODUCT_COLS).eq('store_id', store).is('deleted_at', null)
-    .or(`and(${byName}),ax_code.ilike.${words[0]}*`).order('active', { ascending: false }).order('name').limit(limit);
-  if (r.error && isNet(r.error)) return fromLocal(() => localSearch(s, limit));
+  let qb = supabase.from('products').select(PRODUCT_COLS).eq('store_id', store).is('deleted_at', null);
+  if (vendorId) qb = qb.eq('vendor_id', vendorId);
+  const r = await qb.or(`and(${byName}),ax_code.ilike.${words[0]}*`).order('active', { ascending: false }).order('name').limit(limit);
+  if (r.error && isNet(r.error)) return fromLocal(async () => (await localSearch(s, vendorId ? 100000 : limit)).filter(p => !vendorId || p.vendor_id === vendorId).slice(0, limit));
   return { data: (r.data as unknown as Product[]) ?? [], error: r.error };
+}
+
+// NCC và toàn bộ sản phẩm của một NCC (mất mạng thì lấy trong bản sao trên máy).
+export interface Vendor { id: string; code: string; name: string }
+export async function listVendors(store: string): Promise<Vendor[]> {
+  try {
+    return await fetchAll<Vendor>((a, b) => supabase.from('vendors').select('id,code,name').eq('store_id', store).is('deleted_at', null).order('name').range(a, b));
+  } catch (e) { if (isNet(e)) return (await localVendors()).sort((a, b) => a.name.localeCompare(b.name)); throw e; }
+}
+export async function vendorProducts(store: string, vendorId: string): Promise<Product[]> {
+  const byName = (a: Product, b: Product) => Number(b.active) - Number(a.active) || pname(a).localeCompare(pname(b), 'vi');
+  try {
+    return (await fetchAll<Product>((a, b) => supabase.from('products').select(PRODUCT_COLS).eq('store_id', store).eq('vendor_id', vendorId).is('deleted_at', null).order('id').range(a, b) as any)).sort(byName);
+  } catch (e) { if (isNet(e)) return (await localByVendor(vendorId)).sort(byName); throw e; }
 }
 
 export const audit = (store: string, batch_id: string, action: string, before: unknown, after: unknown) => { auditOffline(store, batch_id, action, before, after); };

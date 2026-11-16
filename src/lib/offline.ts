@@ -104,6 +104,19 @@ export async function localSearch(q: string, limit = 50): Promise<Product[]> {
   return products.filter(p => (p.ax_code ?? '').toUpperCase().startsWith(ax) || words.every(w => ((p as any).name_search ?? unaccent(p.name)).includes(w)))
     .sort((a, b) => Number(b.active) - Number(a.active)).slice(0, limit);
 }
+// Danh sách NCC và sản phẩm theo NCC lấy từ bản sao trên máy (khi mất mạng).
+export async function localVendors(): Promise<{ id: string; code: string; name: string }[]> {
+  const { products } = await local();
+  if (!products.length) throw new Error(NO_SNAPSHOT);
+  const m = new Map<string, { id: string; code: string; name: string }>();
+  for (const p of products) if (p.vendor_id && p.vendors) m.set(p.vendor_id, { id: p.vendor_id, ...p.vendors });
+  return [...m.values()];
+}
+export async function localByVendor(vendorId: string): Promise<Product[]> {
+  const { products } = await local();
+  if (!products.length) throw new Error(NO_SNAPSHOT);
+  return products.filter(p => p.vendor_id === vendorId);
+}
 export const localTerms = async () => ({ terms: (await get<Term[]>('terms')) ?? [], store: await get<any>('store') });
 export const localShelves = async () => (await get<Shelf[]>('shelves')) ?? [];
 
