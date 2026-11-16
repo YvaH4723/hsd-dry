@@ -256,3 +256,9 @@ details.more > :not(summary) + * { margin-top: 10px; }
   .found, .toast, .skel { animation: none; }
   button, nav.tabs > button.add .disc, details.more > summary::after { transition: none; }
 }
+
+/* iPhone: khi bàn phím mở, thanh dưới (position: fixed) bị kéo trôi theo trang. Đang gõ thì ẩn thanh dưới. */
+@media (pointer: coarse) {
+  body:has(input:not([type="checkbox"]):not([type="file"]):focus, select:focus, textarea:focus) nav.tabs { display: none; }
+  body:has(input:not([type="checkbox"]):not([type="file"]):focus, select:focus, textarea:focus) .savebar { bottom: 10px; }
+}
