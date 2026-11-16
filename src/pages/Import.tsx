@@ -132,7 +132,7 @@ export default function Import({ member }: { member: Member }) {
         <h2>Danh mục sản phẩm</h2>
         <p className="note">
           File GTB Cadencia (có cột AX Code): cập nhật tên, giá, NCC, mã vạch; sản phẩm không còn trong file sẽ bị ẩn, không xóa.
-          File Cadencia tổng TB (có cột Product number): chỉ lấy hàng 101 - DRY FOOD, DHP, Non Food, thêm sản phẩm app chưa có và điền NCC, giá còn trống; không sửa tên, không ẩn gì.
+          File Cadencia tổng TB (có cột Product number): lấy hàng của tất cả các quầy, thêm sản phẩm app chưa có và điền NCC, giá còn trống; không sửa tên, không ẩn gì.
           Cả hai không đụng lô HSD, kệ.
         </p>
         <input type="file" accept=".xlsx,.xls" aria-label="Chọn file Cadencia" disabled={busy} onChange={e => pick(e.target.files?.[0])} />
@@ -144,7 +144,7 @@ export default function Import({ member }: { member: Member }) {
             <div><b className="ok">{prev.added.length}</b>Thêm mới</div>
             <div><b>{prev.updated.length}</b>{prev.mode === 'tb' ? 'Bổ sung NCC/giá' : 'Cập nhật'}</div>
             <div><b className="mute">{prev.unchanged}</b>{prev.mode === 'tb' ? 'Đã có, giữ nguyên' : 'Không đổi'}</div>
-            {prev.mode === 'tb' ? <div><b className="mute">{prev.skipped}</b>Không phải Dry (bỏ qua)</div> : <div><b className="warn">{prev.hidden.length}</b>Sẽ ẩn</div>}
+            {prev.mode === 'tb' ? null : <div><b className="warn">{prev.hidden.length}</b>Sẽ ẩn</div>}
             <div><b className="bad">{prev.errors.length}</b>Lỗi (bỏ qua)</div>
           </div>
           <p className="note">{rows.length} dòng trong file.</p>

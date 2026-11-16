@@ -66,11 +66,9 @@ export function diffCatalog(rows: Record<string, unknown>[], existing: Existing[
 }
 
 // File "Cadencia tổng TB" (cả cửa hàng): Product number = mã AX, không có mã vạch, NCC chỉ có tên.
-// Chỉ lấy hàng quầy Dry quản lý: 101 - DRY FOOD, 3 - DHP, 4 - NON FOOD (Contact List DRY có cả NCC DHP, Non Food). File này chỉ BỔ SUNG: thêm sản phẩm app chưa có (để ở trạng thái
+// Lấy hàng của TẤT CẢ các quầy (dùng app tra giá, quét mã mọi món). File này chỉ BỔ SUNG: thêm sản phẩm app chưa có (để ở trạng thái
 // "không có trong Cadencia" như lần gộp trước), điền NCC / giá còn trống. Không sửa tên, không ẩn sản phẩm nào.
 export const TB_COL = 'Product number';
-export const isDryRow = (r: Record<string, unknown>) =>
-  String(r['SUP CATEGORY'] ?? '').startsWith('101') || /^[34]\s*-/.test(String(r['CATEGORY'] ?? '').trim());
 export const vendorKey = (s: unknown) => unaccent(String(s ?? '')).replace(/[^a-z0-9]/g, '');
 export const tbVendorCode = (name: string) => {
   let h = 0; for (const c of vendorKey(name)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
@@ -82,7 +80,6 @@ export function diffTB(rows: Record<string, unknown>[], existing: Existing[], co
   const p: Preview = { mode: 'tb', skipped: 0, added: [], updated: [], unchanged: 0, hidden: [], errors: [] };
   rows.forEach((r, i) => {
     const row = i + 2;
-    if (!isDryRow(r)) { p.skipped!++; return; }
     const ax = String(r[TB_COL] ?? '').trim(), name = String(r['Product name'] ?? '').trim();
     if (!ax) return p.errors.push({ row, reason: 'Thiếu mã AX' });
     if (!name) return p.errors.push({ row, reason: 'Thiếu tên' });
