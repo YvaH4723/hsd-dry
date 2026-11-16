@@ -13,3 +13,21 @@ if ('serviceWorker' in navigator) {
     return c.addAll([...new Set([base, ...urls])]);
   }).catch(() => {});
 }
+
+// Có bản mới trên web (vừa sửa xong) mà app trên máy vẫn chạy bản cũ: hiện nút "Tải lại" thay vì phải tắt hẳn app.
+const mine = document.querySelector<HTMLScriptElement>('script[src*="/assets/index-"]')?.src.match(/index-[\w-]+\.js/)?.[0];
+async function checkUpdate() {
+  if (!mine || !navigator.onLine || document.getElementById('upd')) return;
+  try {
+    const html = await (await fetch(import.meta.env.BASE_URL, { cache: 'no-store' })).text();
+    const live = html.match(/index-[\w-]+\.js/)?.[0];
+    if (!live || live === mine) return;
+    const b = document.createElement('div');
+    b.id = 'upd'; b.className = 'toast'; b.setAttribute('role', 'status');
+    b.innerHTML = '<span>Có bản mới của app.</span><button>Tải lại</button>';
+    b.querySelector('button')!.onclick = () => location.reload();
+    document.body.append(b);
+  } catch { /* mất mạng: thử lại lần sau */ }
+}
+checkUpdate();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkUpdate(); });
