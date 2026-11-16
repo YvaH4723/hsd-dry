@@ -33,6 +33,9 @@ export default function App() {
   const [sub, setSub] = useState<Sub>(null);
   const [adding, setAdding] = useState<{ product?: Product } | null>(null);
   const [rev, setRev] = useState(0);                 // tăng khi đóng màn Thêm lô: các danh sách tải lại
+  const [slow, setSlow] = useState(false);           // mạng chậm quá 5 giây
+
+  useEffect(() => { const t = setTimeout(() => setSlow(true), 5000); return () => clearTimeout(t); }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -51,12 +54,13 @@ export default function App() {
       });
   }, [session]);
 
-  // Mất mạng mà phiên đăng nhập chưa đọc lại được: vẫn mở app bằng thông tin đã lưu.
-  const offlineMember = session === null && !navigator.onLine ? cachedMember() : null;
+  // Mất mạng, hoặc mạng chậm (quá 5 giây chưa đọc được tài khoản): mở app ngay bằng thông tin đã lưu trên máy.
+  const offlineMember = (session === null && !navigator.onLine) || (slow && member === undefined) ? cachedMember(session?.user.id) : null;
   const me = member ?? offlineMember;
   useEffect(() => { if (me) startSync(me.store_id); }, [me?.store_id]);
 
-  if (session === undefined || (session && member === undefined)) return <main className="page"><p className="note">Đang tải…</p></main>;
+  if (!offlineMember && (session === undefined || (session && member === undefined)))
+    return <main className="page"><p className="note">{slow ? 'Mạng đang chậm, vẫn đang chờ máy chủ… Kiểm tra wifi / 4G.' : 'Đang tải…'}</p></main>;
   if (!session && !offlineMember) return <Login />;
   if (!me) return (
     <main className="login page">
