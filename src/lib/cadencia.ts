@@ -35,6 +35,7 @@ export function mapRow(r: Record<string, unknown>): CatalogItem {
 
 export interface Existing { id?: string; ax: string; name: string; price: number | null; vendorCode: string; active: boolean; keep?: boolean }
 export interface Preview {
+  mode?: 'gtb' | 'tb'; skipped?: number;
   added: CatalogItem[]; updated: { item: CatalogItem; changes: string[] }[]; unchanged: number;
   hidden: Existing[]; errors: { row: number; reason: string }[];
 }
@@ -61,5 +62,44 @@ export function diffCatalog(rows: Record<string, unknown>[], existing: Existing[
   });
   // Sản phẩm chuyển từ ExpiryDay (keep) không bị ẩn dù không có trong file.
   p.hidden = existing.filter(e => e.active && !e.keep && !seenAx.has(e.ax));
+  return p;
+}
+
+// File "Cadencia tổng TB" (cả cửa hàng): Product number = mã AX, không có mã vạch, NCC chỉ có tên.
+// Chỉ lấy hàng 101 - DRY FOOD. File này chỉ BỔ SUNG: thêm sản phẩm app chưa có (để ở trạng thái
+// "không có trong Cadencia" như lần gộp trước), điền NCC / giá còn trống. Không sửa tên, không ẩn sản phẩm nào.
+export const TB_COL = 'Product number';
+export const vendorKey = (s: unknown) => unaccent(String(s ?? '')).replace(/[^a-z0-9]/g, '');
+export const tbVendorCode = (name: string) => {
+  let h = 0; for (const c of vendorKey(name)) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return 'TB-' + h.toString(36).toUpperCase();
+};
+export function diffTB(rows: Record<string, unknown>[], existing: Existing[], codeOfName: Map<string, string>): Preview {
+  const old = new Map(existing.map(e => [e.ax, e]));
+  const seen = new Set<string>();
+  const p: Preview = { mode: 'tb', skipped: 0, added: [], updated: [], unchanged: 0, hidden: [], errors: [] };
+  rows.forEach((r, i) => {
+    const row = i + 2;
+    if (!String(r['SUP CATEGORY'] ?? '').startsWith('101')) { p.skipped!++; return; }
+    const ax = String(r[TB_COL] ?? '').trim(), name = String(r['Product name'] ?? '').trim();
+    if (!ax) return p.errors.push({ row, reason: 'Thiếu mã AX' });
+    if (!name) return p.errors.push({ row, reason: 'Thiếu tên' });
+    if (seen.has(ax)) return p.errors.push({ row, reason: `Mã AX ${ax} lặp` });
+    seen.add(ax);
+    const vendorName = String(r['SUPPLIER'] ?? '').trim();
+    const price = Math.round(Number(r['PRICE']));
+    const sub = String(r['col6'] ?? '');
+    const it: CatalogItem = {
+      ax, name, nameSearch: unaccent(name), brand: '', vendorName,
+      vendorCode: vendorName ? codeOfName.get(vendorKey(vendorName)) ?? tbVendorCode(vendorName) : '',
+      price: Number.isFinite(price) && price > 0 ? price : null,
+      group: sub.startsWith('10101') ? 'sweet' : sub.startsWith('10102') ? 'salty' : null, category: stripCode(sub), barcodes: [],
+    };
+    const e = old.get(ax);
+    if (!e) return p.added.push(it);
+    const changes = [!e.vendorCode && it.vendorCode && 'thêm NCC', e.price == null && it.price != null && 'thêm giá'].filter(Boolean) as string[];
+    if (!changes.length) return p.unchanged++;
+    p.updated.push({ item: { ...it, name: e.name, vendorCode: e.vendorCode || it.vendorCode, price: e.price ?? it.price }, changes });
+  });
   return p;
 }

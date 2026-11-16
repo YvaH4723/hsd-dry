@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
-import { diffCatalog, mapRow, type Existing, type Preview } from '../lib/cadencia.ts';
+import { diffCatalog, diffTB, mapRow, TB_COL, vendorKey, type Existing, type Preview } from '../lib/cadencia.ts';
 
 const mapAll = (rows: Record<string, unknown>[]) => rows.map(mapRow).filter(i => i.ax);
 import { resolveVendors, type VendorTerm } from '../lib/terms.ts';
@@ -10,13 +10,14 @@ import { refreshSnapshot } from '../lib/offline.ts';
 const chunks = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 
 // Đọc sheet đầu, tự tìm dòng tiêu đề (file Cadencia có 3 dòng đầu không phải tiêu đề).
-export async function readRows(file: File, col = 'AX Code', what = 'GTB Cadencia'): Promise<Record<string, unknown>[]> {
+export async function readRows(file: File, col: string | string[] = 'AX Code', what = 'GTB Cadencia'): Promise<Record<string, unknown>[]> {
   const XLSX = await import('xlsx');
+  const cols = [col].flat();
   const wb = XLSX.read(await file.arrayBuffer());
   const aoa = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: null });
-  const h = aoa.findIndex((r, i) => i < 20 && r.some(c => String(c ?? '').trim() === col));
-  if (h < 0) throw new Error(`Không thấy cột "${col}" trong 20 dòng đầu. Có đúng file ${what} không?`);
-  const head = aoa[h].map(c => String(c ?? '').trim());
+  const h = aoa.findIndex((r, i) => i < 20 && r.some(c => cols.includes(String(c ?? '').trim())));
+  if (h < 0) throw new Error(`Không thấy cột ${cols.map(c => `"${c}"`).join(' hoặc ')} trong 20 dòng đầu. Có đúng file ${what} không?`);
+  const head = aoa[h].map((c, i) => String(c ?? '').trim() || 'col' + i);   // cột không có tiêu đề: col6, col16…
   return aoa.slice(h + 1).filter(r => r.some(c => c != null && c !== '')).map(r => Object.fromEntries(head.map((k, i) => [k, r[i]])));
 }
 
@@ -43,11 +44,15 @@ export default function Import({ member }: { member: Member }) {
     if (!f) return;
     setBusy(true); setPrev(null); setMsg('Đang đọc file…');
     try {
-      const r = await readRows(f);
+      const r = await readRows(f, ['AX Code', TB_COL], 'GTB Cadencia / Cadencia tổng TB');
       setMsg('Đang so với danh mục hiện có…');
       const ex = await loadExisting(store);
       setIds(new Map(ex.map(e => [e.ax, e.id!])));
-      setRows(r); setPrev(diffCatalog(r, ex)); setMsg('');
+      if (r.length && TB_COL in r[0]) {
+        const vs = await fetchAll<{ code: string; name: string }>((a, b) => supabase.from('vendors').select('code,name').eq('store_id', store).is('deleted_at', null).order('code').range(a, b));
+        setRows(r); setPrev(diffTB(r, ex, new Map(vs.map(v => [vendorKey(v.name), v.code]))));
+      } else { setRows(r); setPrev(diffCatalog(r, ex)); }
+      setMsg('');
     } catch (e: any) { setMsg('Lỗi: ' + e.message); }
     setBusy(false);
   }
@@ -62,12 +67,33 @@ export default function Import({ member }: { member: Member }) {
       const vrows = [...vend].filter(([c]) => c).map(([code, name]) => ({ store_id: store, code, name: name || code }));
       const vid = new Map<string, string>();
       for (const c of chunks(vrows, 500)) {
-        const { data, error } = await supabase.from('vendors').upsert(c, { onConflict: 'store_id,code' }).select('id,code');
+        const { data, error } = await supabase.from('vendors').upsert(c, { onConflict: 'store_id,code', ignoreDuplicates: prev.mode === 'tb' }).select('id,code');
         if (error) throw error;
         data.forEach(v => vid.set(v.code, v.id));
       }
+      // File tổng TB không đổi tên NCC đã có: chỉ thêm NCC mới, rồi lấy id của tất cả.
+      if (prev.mode === 'tb') (await fetchAll<{ id: string; code: string }>((a, b) => supabase.from('vendors').select('id,code').eq('store_id', store).order('code').range(a, b)))
+        .forEach(v => vid.set(v.code, v.id));
       const pid = new Map<string, string>();
-      for (const [n, c] of chunks(write, 500).entries()) {
+      if (prev.mode === 'tb') {
+        // Bổ sung từ file tổng TB: sản phẩm mới để "không có trong Cadencia"; sản phẩm có rồi chỉ điền NCC, giá còn trống.
+        for (const [n, c] of chunks(prev.added, 500).entries()) {
+          setMsg(`Đang thêm sản phẩm ${Math.min((n + 1) * 500, prev.added.length)}/${prev.added.length}…`);
+          const { error } = await supabase.from('products').upsert(c.map(i => ({
+            store_id: store, ax_code: i.ax, name: i.name, name_search: i.nameSearch, vendor_id: vid.get(i.vendorCode) ?? null,
+            price: i.price, dept_group: i.group, category: i.category || 'TB', active: false, deleted_at: null,
+          })), { onConflict: 'store_id,ax_code', ignoreDuplicates: true });
+          if (error) throw error;
+        }
+        for (const [n, c] of chunks(prev.updated.map(u => u.item), 500).entries()) {
+          setMsg(`Đang bổ sung NCC, giá ${Math.min((n + 1) * 500, prev.updated.length)}/${prev.updated.length}…`);
+          const { error } = await supabase.from('products').upsert(c.map(i => ({
+            store_id: store, ax_code: i.ax, name: i.name, vendor_id: vid.get(i.vendorCode) ?? null, price: i.price,
+          })), { onConflict: 'store_id,ax_code' });
+          if (error) throw error;
+        }
+      }
+      for (const [n, c] of (prev.mode === 'tb' ? [] : chunks(write, 500)).entries()) {
         setMsg(`Đang ghi sản phẩm ${Math.min((n + 1) * 500, write.length)}/${write.length}…`);
         const { data, error } = await supabase.from('products').upsert(c.map(i => ({
           store_id: store, ax_code: i.ax, name: i.name, name_search: i.nameSearch, brand: i.brand || null,
@@ -77,7 +103,7 @@ export default function Import({ member }: { member: Member }) {
         data.forEach(p => pid.set(p.ax_code, p.id));
       }
       // Thêm mọi mã vạch trong file còn thiếu (kể cả lần trước ghi dở). Mã đã có giữ nguyên, kể cả mã nhân viên gắn.
-      const bc = mapAll(rows).flatMap(i => { const id = pid.get(i.ax) ?? ids.get(i.ax); return id ? i.barcodes.map(code => ({ store_id: store, product_id: id, code })) : []; });
+      const bc = (prev.mode === 'tb' ? [] : mapAll(rows)).flatMap(i => { const id = pid.get(i.ax) ?? ids.get(i.ax); return id ? i.barcodes.map(code => ({ store_id: store, product_id: id, code })) : []; });
       for (const [n, c] of chunks(bc, 1000).entries()) {
         setMsg(`Đang ghi mã vạch ${Math.min((n + 1) * 1000, bc.length)}/${bc.length}…`);
         const { error } = await supabase.from('barcodes').upsert(c, { onConflict: 'store_id,code', ignoreDuplicates: true });
@@ -90,7 +116,8 @@ export default function Import({ member }: { member: Member }) {
       }
       await supabase.from('import_runs').insert({ store_id: store, kind: 'cadencia', added: prev.added.length, updated: prev.updated.length,
         unchanged: prev.unchanged, errors: prev.errors.length, hidden: prev.hidden.length });
-      setMsg(`Xong: thêm ${prev.added.length}, cập nhật ${prev.updated.length}, ẩn ${prev.hidden.length}.`);
+      setMsg(prev.mode === 'tb' ? `Xong: thêm ${prev.added.length}, bổ sung NCC/giá ${prev.updated.length}.`
+        : `Xong: thêm ${prev.added.length}, cập nhật ${prev.updated.length}, ẩn ${prev.hidden.length}.`);
       setPrev(null); setRows([]);
       refreshSnapshot(store);                  // bản sao trên máy (dùng khi mất mạng) lấy danh mục mới
     } catch (e: any) { setMsg('Lỗi khi ghi (chưa ghi hết, chọn lại file để làm tiếp): ' + e.message); }
@@ -102,8 +129,12 @@ export default function Import({ member }: { member: Member }) {
       <h2 className="title">Nhập file</h2>
       <ContactImport store={store} />
       <div className="panel">
-        <h2>Danh mục GTB Cadencia</h2>
-        <p className="note">Chỉ cập nhật tên, giá, NCC, mã vạch. Không đụng lô HSD, kệ. Sản phẩm không còn trong file sẽ bị ẩn, không xóa.</p>
+        <h2>Danh mục sản phẩm</h2>
+        <p className="note">
+          File GTB Cadencia (có cột AX Code): cập nhật tên, giá, NCC, mã vạch; sản phẩm không còn trong file sẽ bị ẩn, không xóa.
+          File Cadencia tổng TB (có cột Product number): chỉ lấy hàng 101 - DRY FOOD, thêm sản phẩm app chưa có và điền NCC, giá còn trống; không sửa tên, không ẩn gì.
+          Cả hai không đụng lô HSD, kệ.
+        </p>
         <input type="file" accept=".xlsx,.xls" aria-label="Chọn file Cadencia" disabled={busy} onChange={e => pick(e.target.files?.[0])} />
         {msg && <p className={msg.startsWith('Lỗi') ? 'msg bad' : 'note'}>{msg}</p>}
       </div>
@@ -111,9 +142,9 @@ export default function Import({ member }: { member: Member }) {
         <div className="panel">
           <div className="stats">
             <div><b className="ok">{prev.added.length}</b>Thêm mới</div>
-            <div><b>{prev.updated.length}</b>Cập nhật</div>
-            <div><b className="mute">{prev.unchanged}</b>Không đổi</div>
-            <div><b className="warn">{prev.hidden.length}</b>Sẽ ẩn</div>
+            <div><b>{prev.updated.length}</b>{prev.mode === 'tb' ? 'Bổ sung NCC/giá' : 'Cập nhật'}</div>
+            <div><b className="mute">{prev.unchanged}</b>{prev.mode === 'tb' ? 'Đã có, giữ nguyên' : 'Không đổi'}</div>
+            {prev.mode === 'tb' ? <div><b className="mute">{prev.skipped}</b>Không phải Dry (bỏ qua)</div> : <div><b className="warn">{prev.hidden.length}</b>Sẽ ẩn</div>}
             <div><b className="bad">{prev.errors.length}</b>Lỗi (bỏ qua)</div>
           </div>
           <p className="note">{rows.length} dòng trong file.</p>
