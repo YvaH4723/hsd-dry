@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
 import { unaccent } from '../lib/cadencia.ts';
+import { normVendor } from '../lib/terms.ts';
 import { fetchAll, reloadTerms, settingsOf } from '../lib/db.ts';
 import { isNet } from '../lib/offline.ts';
 import { OWN_BRAND } from '../lib/action.ts';
@@ -33,17 +34,17 @@ export default function Terms({ member }: { member: Member }) {
 
   const main = (v: string) => terms.find(t => t.vendor_id === v && !t.brand && !t.product_id);
   const bad = (t?: T) => !t || t.needs_review || (t.action === 'return' && !t.days);
-  const own = (v: V) => OWN_BRAND.has(v.code);          // Ân Nam, Annam Gourmet: luôn dán giảm giá, không cần điều khoản
+  const own = (v: V) => OWN_BRAND.has(normVendor(v.code));          // Ân Nam, Annam Gourmet: luôn dán giảm giá, không cần điều khoản
   const describe = (t?: T) => !t ? `Chưa có điều khoản: tạm dán giảm giá trước HSD ${cfg.discountDays} ngày`
     : t.needs_review || (t.action === 'return' && !t.days) ? 'Cần chọn: ' + (t.raw_text ?? '').replace(/\n/g, ' / ')
     : t.action === 'return' ? `Báo trả trước HSD ${t.days} ngày + ${cfg.returnBuffer} ngày an toàn` : `Không đổi trả: dán giảm giá trước HSD ${cfg.discountDays} ngày`;
   const list = vendors ?? [];
   const missing = list.filter(v => !main(v.id) && !own(v)).length;
-  const review = list.filter(v => main(v.id)?.needs_review).length;
+  const review = list.filter(v => main(v.id) && bad(main(v.id))).length;
   const s = unaccent(q.trim());
   const shown = list.filter(v => {
     const m = main(v.id);
-    if (mode === 'review' && !m?.needs_review) return false;
+    if (mode === 'review' && !(m && bad(m))) return false;
     if (mode === 'missing' && (m || own(v))) return false;
     if (!s) return true;
     const brands = terms.filter(t => t.vendor_id === v.id && t.brand).map(t => t.brand).join(' ');

@@ -102,8 +102,9 @@ export default function Import({ member }: { member: Member }) {
         if (error) throw error;
         data.forEach(p => pid.set(p.ax_code, p.id));
       }
+      const bad = new Set(prev.errors.map(e => e.row));                // dòng báo lỗi: không ghi mã vạch
       // Thêm mọi mã vạch trong file còn thiếu (kể cả lần trước ghi dở). Mã đã có giữ nguyên, kể cả mã nhân viên gắn.
-      const bc = (prev.mode === 'tb' ? [] : mapAll(rows)).flatMap(i => { const id = pid.get(i.ax) ?? ids.get(i.ax); return id ? i.barcodes.map(code => ({ store_id: store, product_id: id, code })) : []; });
+      const bc = (prev.mode === 'tb' ? [] : mapAll(rows.filter((_, i) => !bad.has(i + 1)))).flatMap(i => { const id = pid.get(i.ax) ?? ids.get(i.ax); return id ? i.barcodes.map(code => ({ store_id: store, product_id: id, code })) : []; });
       for (const [n, c] of chunks(bc, 1000).entries()) {
         setMsg(`Đang ghi mã vạch ${Math.min((n + 1) * 1000, bc.length)}/${bc.length}…`);
         const { error } = await supabase.from('barcodes').upsert(c, { onConflict: 'store_id,code', ignoreDuplicates: true });

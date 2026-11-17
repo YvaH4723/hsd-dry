@@ -120,7 +120,7 @@ function Editor({ b, member, shelves, done }: { b: LotRow; member: Member; shelv
       done();
     } catch (e: any) { setMsg('Chưa lưu được: ' + e.message); setBusy(false); }
   }
-  const save = () => upd({ qty: n, shelf_id: shelf || null, expiry_date: exp, ...(clearNote ? { expiry_note: null } : {}) }, 'edit');
+  const save = () => upd({ qty: n, shelf_id: shelf || null, expiry_date: exp, ...(exp !== b.expiry_date ? { mfg_date: date.mfg } : {}), ...(clearNote ? { expiry_note: null } : {}) }, 'edit');
 
   return (
     <div className="li-edit">

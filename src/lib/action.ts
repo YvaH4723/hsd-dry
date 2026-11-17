@@ -1,3 +1,4 @@
+import { normVendor } from './terms.ts';
 // Tính việc phải làm cho một lô:
 //   báo trả NCC: HSD − (N ngày của NCC + số ngày an toàn, mặc định 5)
 //   dán giảm giá: HSD − mốc giảm giá (mặc định 45) cho hàng không đổi trả / chưa có điều khoản.
@@ -21,7 +22,7 @@ export const termAt = (idx: Map<string, Term>, vendor: string, brand: string | n
 export function termFor(p: LotProduct, idx: Map<string, Term>): TermInfo {
   if (p.no_return) return { kind: 'discount', days: null, why: 'Sản phẩm đánh dấu không đổi trả' };
   if (p.sanh_dieu) return { kind: 'discount', days: null, why: 'Hàng Sành Điệu' };
-  if (OWN_BRAND.has(p.vendors?.code ?? '')) return { kind: 'discount', days: null, why: 'Hàng Ân Nam / Annam Gourmet' };
+  if (OWN_BRAND.has(normVendor(p.vendors?.code))) return { kind: 'discount', days: null, why: 'Hàng Ân Nam / Annam Gourmet' };
   const v = p.vendor_id;
   if (!v) return { kind: 'discount', days: null, problem: 'Chưa có NCC' };
   const byProduct = idx.get(key(v, null, p.id)), byBrand = p.brand ? idx.get(key(v, p.brand, null)) : undefined;

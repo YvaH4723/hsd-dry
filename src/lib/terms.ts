@@ -11,14 +11,14 @@ const SIMPLE = /^\(?(\d+(?:\.\d+)?)\s*(days?|d|ngày|months?|tháng)?\)?$/i;
 export const normVendor = (s: unknown) => String(s ?? '').replace(/\s+/g, '').toUpperCase();
 
 export function parseTerm(value: unknown): ParsedTerm {
-  const raw = value == null ? '' : String(value).trim();
+  const raw = value == null ? '' : String(value).normalize('NFC').trim();
   const s = raw.replace(/\s+/g, ' ');
   if (/^(no|0|)$/i.test(s)) return { action: 'discount', days: null, review: false, raw };
   if (/^no\b/i.test(s)) return { action: 'return', days: null, review: true, raw };
 
   // "Yes - Food: 36days - NF: 216 days": quầy Dry lấy phần Food
   const food = /\n/.test(raw) ? null : /^yes\b.*?(?<!\w)Food:\s*(\d+)\s*d/i.exec(s);
-  if (food) return { action: 'return', days: +food[1], review: false, raw };
+  if (food) return +food[1] ? { action: 'return', days: +food[1], review: false, raw } : { action: 'discount', days: null, review: false, raw };
 
   const m = /\n/.test(raw) ? null : SIMPLE.exec(s.replace(/^yes\b\s*[-–:]?\s*/i, ''));
   if (!m) return { action: 'return', days: null, review: true, raw };

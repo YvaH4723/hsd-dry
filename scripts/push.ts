@@ -24,22 +24,22 @@ for (const s of d.stores) {
   const subs = d.subs.filter((x: any) => x.store_id === s.id);
   if (!subs.length) continue;
   const cfg = { idx: indexTerms(d.terms.filter((t: any) => t.store_id === s.id) as Term[]), discountDays: s.discount_days ?? 45, returnBuffer: s.return_buffer_days ?? 5 };
-  const n = { exp: 0, ret: 0, disc: 0, pick: 0 };
+  const n = { exp: 0, ret: 0, disc: 0, pick: 0, rem: 0 };
   for (const l of d.lots.filter((x: any) => x.store_id === s.id)) {
     if (l.status === 'return_notified') { n.pick++; continue; }
     if (l.expiry_note !== 'action_date' && daysLeft(l.expiry_date) < 0) { n.exp++; continue; }
     if (l.status !== 'on_shelf') continue;
     const a = actionFor(l, l.products, cfg), left = daysLeft(a.date);
-    if (left <= SOON) a.kind === 'discount' ? n.disc++ : n.ret++;
+    if (left <= SOON) a.kind === 'discount' ? n.disc++ : a.kind === 'reminder' ? n.rem++ : n.ret++;
   }
-  const parts = [n.exp && `${n.exp} lô quá HSD`, n.ret && `${n.ret} cần báo trả NCC`, n.disc && `${n.disc} cần dán giảm giá`, n.pick && `${n.pick} chờ NCC lấy`].filter(Boolean);
+  const parts = [n.exp && `${n.exp} lô quá HSD`, n.ret && `${n.ret} cần báo trả NCC`, n.disc && `${n.disc} cần dán giảm giá`, n.pick && `${n.pick} chờ NCC lấy`, n.rem && `${n.rem} đến ngày nhắc`].filter(Boolean);
   if (!parts.length) continue;
   console.log('Cửa hàng', s.id.slice(0, 8), parts.join(' · '), subs.length, 'máy');
   const payload = JSON.stringify({ title: afternoon ? 'HSD Dry · nhắc lại chiều nay' : 'HSD Dry · việc hôm nay', body: parts.join(' · '), url: 'https://yvah4723.github.io/hsd-dry/' });
   for (const sub of subs) {
     try { await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload, { TTL: 6 * 3600 }); sent++; }
     catch (e: any) {
-      if (e.statusCode === 404 || e.statusCode === 410) await rpc('push_remove', { p_token: token, p_endpoint: sub.endpoint });   // máy đã gỡ app / tắt thông báo
+      if ([401, 403, 404, 410].includes(e.statusCode)) await rpc('push_remove', { p_token: token, p_endpoint: sub.endpoint });   // máy đã gỡ app / tắt thông báo
       else console.error('Lỗi gửi', e.statusCode, e.body);
     }
   }

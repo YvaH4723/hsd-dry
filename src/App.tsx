@@ -49,7 +49,7 @@ export default function App() {
 
   useEffect(() => {
     if (!session) { setMember(undefined); return; }
-    supabase.from('members').select('*').eq('user_id', session.user.id).maybeSingle()
+    supabase.from('members').select('*').eq('user_id', session.user.id).order('created_at').limit(1).maybeSingle()
       .then(({ data, error }) => {
         if (error && isNet(error)) return setMember(cachedMember(session.user.id));   // mất mạng: dùng thông tin đã lưu
         const m = (data as Member) ?? null;
@@ -117,6 +117,10 @@ export default function App() {
 async function logout(pending: number) {
   if (pending && !confirm(`Còn ${pending} thay đổi chưa gửi lên máy chủ. Đăng xuất bây giờ thì các thay đổi này bị BỎ. Nên đợi có mạng cho gửi xong. Vẫn đăng xuất?`)) return;
   try { localStorage.removeItem(MEMBER_KEY); localStorage.removeItem('hsd.zones'); } catch { /* */ }
+  try {                                                                 // gỡ thông báo của tài khoản này trên máy, người sau tự bật lại
+    const sub = await (await navigator.serviceWorker?.getRegistration())?.pushManager.getSubscription();
+    if (sub) { await supabase.from('push_subs').delete().eq('endpoint', sub.endpoint); await sub.unsubscribe(); }
+  } catch { /* */ }
   await clearLocal().catch(() => {});
   await supabase.auth.signOut({ scope: 'local' });
   location.reload();
@@ -129,7 +133,7 @@ function More({ member, email, uid, sub, setSub }: { member: Member; email?: str
   const terms = useTerms(member.store_id);
   const admin = member.role === 'admin';
   const [waiting, setWaiting] = useState(0);
-  useEffect(() => { if (admin && !sub) supabase.rpc('pending_users', { p_store: member.store_id }).then(({ data }) => setWaiting(data?.length ?? 0)); }, [sub]);
+  useEffect(() => { if (admin && !sub && navigator.onLine) supabase.rpc('pending_users', { p_store: member.store_id }).then(({ data }) => setWaiting(data?.length ?? 0)); }, [sub]);
   if (sub) return (
     <>
       <button className="back" onClick={() => setSub(null)}><Icon name="back" size={20} />Khác</button>

@@ -39,7 +39,7 @@ p { margin: 0; }
 
 /* ---------- khung trang ---------- */
 header.top {
-  position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 6px; min-height: 56px;
+  position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 6px; min-height: calc(56px + env(safe-area-inset-top));
   padding: env(safe-area-inset-top) 6px 0 16px; background: var(--bg); border-bottom: 1px solid var(--line);
 }
 header.top h1 { flex: 1; min-width: 0; font-size: 19px; font-weight: 650; letter-spacing: -.01em; }
@@ -260,5 +260,4 @@ details.more > :not(summary) + * { margin-top: 10px; }
 /* iPhone: khi bàn phím mở, thanh dưới (position: fixed) bị kéo trôi theo trang. Đang gõ thì ẩn thanh dưới. */
 @media (pointer: coarse) {
   body:has(input:not([type="checkbox"]):not([type="file"]):focus, select:focus, textarea:focus) nav.tabs { display: none; }
-  body:has(input:not([type="checkbox"]):not([type="file"]):focus, select:focus, textarea:focus) .savebar { bottom: 10px; }
 }

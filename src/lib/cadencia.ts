@@ -22,7 +22,7 @@ export function barcodesOf(v: unknown): string[] {
 export function mapRow(r: Record<string, unknown>): CatalogItem {
   const name = String(r['Description'] ?? '').trim();
   const sub = String(r['Sub.Department'] ?? '');
-  const price = r['Price'] == null || r['Price'] === '' ? null : Math.round(Number(r['Price']));
+  const price = r['Price'] == null || r['Price'] === '' ? null : Math.round(Number(String(r['Price']).replace(/[,\s]/g, '')));
   return {
     ax: String(r['AX Code'] ?? '').trim().toUpperCase(), name, nameSearch: unaccent(name),
     brand: String(r['Brand Name'] ?? '').trim(),

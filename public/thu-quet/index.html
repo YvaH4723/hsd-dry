@@ -204,7 +204,8 @@ function render(){
    (S.loops?` · trung bình ${(S.detMs/S.loops).toFixed(0)} ms/lượt`:'')+
    `<br>Bộ giải mã: ${S.backend||'—'} · lần xin camera: ${S.permAsks} · tự mở lại: ${S.resumes||0}`+
    (S.errors.length?`<br><span class="bad">Lỗi: ${S.errors.slice(-3).join(' | ')}</span>`:'');
-  $('log').innerHTML=S.log.map(l=>`<tr><td>${l.code}</td><td>${l.fmt}</td><td>${l.el}</td><td>${l.how}</td></tr>`).join('');
+  const esc=t=>String(t).replace(/[&<>"']/g,c=>'&#'+c.charCodeAt(0)+';');
+  $('log').innerHTML=S.log.map(l=>`<tr><td>${esc(l.code)}</td><td>${l.fmt}</td><td>${l.el}</td><td>${l.how}</td></tr>`).join('');
 }
 function copy(){
   const t=['HSD thử quét',$('env').innerText.replace(/\n/g,' '),$('stats').innerText,...S.log.map(l=>[l.code,l.fmt,l.el,l.how].join(' | '))].join('\n');

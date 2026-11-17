@@ -26,4 +26,4 @@ export const getDetector = () => det ??= (async () => {
     if (f.length) return new N({ formats: f }) as Detector;
   } catch { /* rơi xuống WASM */ }
   return new (await loadLib()).BarcodeDetector({ formats: FORMATS }) as Detector;
-})();
+})().catch(e => { det = null; throw e; });

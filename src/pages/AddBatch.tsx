@@ -228,8 +228,9 @@ function NewProduct({ store, code, name: initName, created }: { store: string; c
       }).select('id').single();
       if (error) throw error;
       const codes = (/^\d{11,12}$/.test(code) ? codeVariants(code) : [code]).map(c => ({ store_id: store, product_id: data.id, code: c }));
-      const b = await supabase.from('barcodes').upsert(codes, { onConflict: 'store_id,code', ignoreDuplicates: true });
+      const b = await supabase.from('barcodes').upsert(codes, { onConflict: 'store_id,code', ignoreDuplicates: true }).select('code');
       if (b.error) throw b.error;
+      if (!b.data?.length) alert(`Đã tạo sản phẩm nhưng mã ${code} đang gắn với sản phẩm khác (hoặc đã bị gỡ) nên chưa gắn vào sản phẩm mới.`);
       const { data: p, error: e2 } = await supabase.from('products').select(PRODUCT_COLS).eq('id', data.id).single();
       if (e2) throw e2;
       created(p as unknown as Product);

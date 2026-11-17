@@ -86,7 +86,7 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
       r[0] ? emit(r[0].rawValue) : setMsg('Không đọc được mã trong ảnh. Chụp gần, đủ sáng, giữ thẳng.');
     } catch (e: any) { setMsg('Lỗi đọc ảnh: ' + e.message); }
   }
-  const submit = () => { const t = typed.trim(); if (t) { cb.current(t); setTyped(''); } };
+  const submit = () => { const t = typed.trim(); if (t) { (document.activeElement as HTMLElement | null)?.blur(); cb.current(t); setTyped(''); } };
 
   return (
     <div className="panel scanner">

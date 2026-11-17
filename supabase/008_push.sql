@@ -16,7 +16,7 @@ create policy push_own on push_subs for all using (user_id = auth.uid()) with ch
 create table if not exists push_secret (token text not null, vapid_private text not null);
 alter table push_secret enable row level security;
 delete from push_secret;
-insert into push_secret values ('__TOKEN__', '__PRIV__');
+insert into push_secret select '__TOKEN__', '__PRIV__' where left('__TOKEN__', 2) <> '__';   -- quên thay mã thì không ghi gì
 
 create or replace function push_export(p_token text) returns json language plpgsql security definer set search_path = public as $$
 begin

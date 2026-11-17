@@ -15,7 +15,7 @@ const idb = () => dbp ??= new Promise((ok, fail) => {
   const r = indexedDB.open('hsd-dry', 1);
   r.onupgradeneeded = () => r.result.createObjectStore('kv');
   r.onsuccess = () => ok(r.result);
-  r.onerror = () => fail(r.error);
+  r.onerror = () => { dbp = null; fail(r.error); };
 });
 async function get<T>(k: string): Promise<T | undefined> {
   const db = await idb();
@@ -29,9 +29,12 @@ async function put(k: string, v: unknown): Promise<void> {
 // ---------- tiện ích ----------
 export const isNet = (e: unknown) => !navigator.onLine || /failed to fetch|load failed|networkerror|network request failed|fetch failed/i.test(String((e as any)?.message ?? e));
 // Phiên đăng nhập hết hạn / chưa đọc lại được: không phải máy chủ từ chối thật, giữ thay đổi lại để gửi sau.
+// Lỗi chắc chắn không gửi lại được: dữ liệu/quyền sai (mã Postgres 22/23/42/P0, PGRST1xx/2xx) hoặc lỗi do app tự báo (xung đột, lô mất).
+// Còn lại (502/503/504/429, trang lỗi HTML của cổng mạng) là tạm thời.
+const final = (e: any) => e?.app || /^(2[23]|42|P0)\w{3}$|^PGRST[12]\d\d$/.test(e?.code ?? '');
 const isAuth = (e: any) => /jwt|PGRST30[0-3]|not authenticated|invalid claim/i.test(`${e?.code ?? ''} ${e?.message ?? ''}`) || e?.status === 401;
 const NO_SNAPSHOT = 'Đang mất mạng và máy này chưa có dữ liệu. Mở app một lần khi có mạng để tải dữ liệu về máy.';
-export const codeVariants = (c: string) => [...new Set([c, '0' + c, c.replace(/^0/, '')])].filter(x => x.length >= 6);
+export const codeVariants = (c: string) => [...new Set([c, '0' + c, c.replace(/^0/, ''), ...(/^\d{11,12}$/.test(c) ? [c.padStart(12, '0'), c.padStart(13, '0')] : [])])].filter(x => x.length >= 6);
 
 export async function fetchAll<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
   const out: T[] = [];
@@ -157,16 +160,16 @@ async function updateOne(id: string, patch: Record<string, unknown>, base?: stri
   if (data?.length) { await remember(id, data[0].updated_at); return { error: null }; }
   if (base) {                                                           // 0 dòng: lô bị người khác sửa trước, hay đã mất?
     const { data: cur } = await supabase.from('batches').select('updated_at').eq('id', id).maybeSingle();
-    if (cur) return { error: { message: `Người khác đã sửa lô này lúc ${hm(cur.updated_at)} nên thay đổi của bạn chưa ghi. Mở lô xem lại, cần thì làm lại` } };
+    if (cur) return { error: { app: true, message: `Người khác đã sửa lô này lúc ${hm(cur.updated_at)} nên thay đổi của bạn chưa ghi. Mở lô xem lại, cần thì làm lại` } };
   }
-  return { error: { message: 'Lô không còn trên máy chủ hoặc không có quyền sửa' } };
+  return { error: { app: true, message: 'Lô không còn trên máy chủ hoặc không có quyền sửa' } };
 }
 // Cộng dồn số lượng ngay trên máy chủ (qty = qty + n): hai người cùng cộng không mất phần của nhau.
 async function incrOne(id: string, n: number) {
   const { data, error } = await supabase.rpc('add_qty', { p_id: id, p_n: n });
   if (error) return { error };
   const r = Array.isArray(data) ? data[0] : data;
-  if (!r) return { error: { message: 'Lô không còn trên máy chủ hoặc không có quyền sửa' } };
+  if (!r) return { error: { app: true, message: 'Lô không còn trên máy chủ hoặc không có quyền sửa' } };
   await remember(id, r.updated_at);
   return { error: null };
 }
@@ -191,7 +194,7 @@ export function flush(): Promise<void> {
         : op.kind === 'update' ? await updateOne(op.id, op.patch, op.base)
         : op.kind === 'incr' ? await incrOne(op.id, op.n)
         : await supabase.from('audit_log').insert(op.row);
-      if (error && (isNet(error) || isAuth(error))) break;              // mất mạng / phiên hết hạn: giữ lại, thử sau
+      if (error && (isNet(error) || isAuth(error) || !final(error))) break;   // mất mạng / phiên hết hạn / máy chủ tạm lỗi: giữ lại, thử sau
       if (error) {                                                      // máy chủ từ chối: bỏ thao tác, báo cho người dùng
         const v: any = op.kind === 'audit' ? null : op.view, nm = v?.products ? (v.products.name_vi || v.products.name) : '';
         const what = op.kind === 'insert' ? `Thêm lô ${nm} · HSD ${op.row.expiry_date} · SL ${op.row.qty}` : op.kind === 'update' ? `Sửa lô ${nm} (${Object.keys(op.patch).join(', ')})` : op.kind === 'incr' ? `Cộng ${op.n} vào lô ${nm}` : 'Nhật ký';

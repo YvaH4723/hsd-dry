@@ -124,7 +124,8 @@ function Zones({ store, zones, reload }: { store: string; zones: Zone[]; reload:
   }
   async function remove(z: Zone) {
     if (!confirm(`Xóa khu "${z.name}"? Kệ trong khu này thành "chưa chọn khu".`)) return;
-    await supabase.from('shelves').update({ zone_id: null }).eq('zone_id', z.id);
+    const r = await supabase.from('shelves').update({ zone_id: null }).eq('store_id', store).eq('zone_id', z.id);
+    if (r.error) return failed(r.error);
     const { error } = await supabase.from('zones').update({ deleted_at: new Date().toISOString() }).eq('id', z.id);
     if (error) return failed(error);
     reload();

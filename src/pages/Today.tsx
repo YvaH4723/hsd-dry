@@ -39,7 +39,7 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
     try {
       await updateBatchOffline(store, l.id, { status }, status === 'on_shelf' ? 'undo' : status, { status: prev }, undefined, l.updated_at);
       setToast({ text: `${DONE[status]}: ${pname(l.products)}`, undo: undoable ? () => { setToast(null); mark({ ...l, status }, prev, false); } : undefined });
-    } catch (e: any) { setErr('Chưa lưu được: ' + e.message); load(); }
+    } catch (e: any) { const m = 'Chưa lưu được: ' + e.message; await load(); setErr(m); }
     busy.current.delete(l.id);
   }
 
@@ -53,9 +53,10 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
   const groups: { title: string; tone: string; items: Item[]; btns: (x: Item) => Btn[]; note?: string }[] = [
     { title: 'Quá HSD', tone: 'bad', items: all.filter(x => expired(x) && (x.l.status === 'on_shelf' || x.l.status === 'discounted')),
       btns: x => [['discarded', 'Đã hủy', true], ...(x.a.kind === 'return' ? [['return_notified', 'Đã báo trả'] as Btn] : []), SOLD] },
-    { title: 'Quá ngày báo trả', tone: 'bad', items: open.filter(x => x.a.kind !== 'discount' && left(x) < 0).sort(byDate), btns: retBtns },
-    { title: `Báo trả trong ${SOON} ngày`, tone: 'warn', items: open.filter(x => x.a.kind !== 'discount' && left(x) >= 0 && left(x) <= SOON).sort(byDate), btns: retBtns },
+    { title: 'Quá ngày báo trả', tone: 'bad', items: open.filter(x => x.a.kind === 'return' && left(x) < 0).sort(byDate), btns: retBtns },
+    { title: `Báo trả trong ${SOON} ngày`, tone: 'warn', items: open.filter(x => x.a.kind === 'return' && left(x) >= 0 && left(x) <= SOON).sort(byDate), btns: retBtns },
     { title: 'Cần dán giảm giá', tone: 'warn', items: open.filter(x => x.a.kind === 'discount' && left(x) <= SOON).sort(byDate), btns: () => [['discounted', 'Đã dán giảm giá', true], SOLD] },
+    { title: 'Đến ngày nhắc, chưa có HSD', tone: 'warn', items: open.filter(x => x.a.kind === 'reminder' && left(x) <= SOON).sort(byDate), btns: retBtns },
     { title: 'Đã báo trả, chờ NCC lấy', tone: 'acc', items: all.filter(x => x.l.status === 'return_notified').sort(byDate), btns: () => [['returned', 'NCC đã lấy', true], ['on_shelf', 'Hoàn tác']] },
   ];
   const todo = groups.reduce((n, g) => n + g.items.length, 0);

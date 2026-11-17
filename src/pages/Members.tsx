@@ -47,6 +47,7 @@ export default function Members({ member, myId }: { member: Member; myId?: strin
     if (error) return setMsg({ text: errText(error) });
     if (data === 'chua_dang_ky') return setMsg({ text: `Chưa có tài khoản ${email.trim()}. Nhờ đồng nghiệp mở app, nhập email này, đặt mật khẩu rồi bấm "Chưa có tài khoản? Đăng ký", xong bạn thêm lại.` });
     if (data === 'da_co') return setMsg({ text: 'Người này đã là thành viên.' });
+    if (data === 'cua_hang_khac') return setMsg({ text: 'Tài khoản này đang thuộc cửa hàng khác.' });
     setMsg({ text: `Đã thêm ${email.trim()}. Đồng nghiệp tắt mở lại app là dùng được.`, ok: true });
     setEmail(''); setName(''); setRole('staff'); load();
   }
