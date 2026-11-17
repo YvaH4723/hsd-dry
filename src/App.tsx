@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase, canWrite, type Member } from './supabase.ts';
 import { useTerms, type Product } from './lib/db.ts';
@@ -40,6 +40,25 @@ export default function App() {
   const [adding, setAdding] = useState<{ product?: Product } | null>(null);
   const [rev, setRev] = useState(0);                 // tăng khi đóng màn Thêm lô: các danh sách tải lại
   const [slow, setSlow] = useState(false);           // mạng chậm quá 5 giây
+
+  // Quẹt / nút Quay lại của điện thoại: đóng màn Thêm lô, rồi thoát trang con, rồi về Hôm nay; ở Hôm nay thì mới thoát app.
+  const st = useRef({ tab, sub, adding });
+  st.current = { tab, sub, adding };
+  useEffect(() => {
+    history.replaceState({ r: 1 }, '');
+    history.pushState({ a: 1 }, '');
+    const pop = () => {
+      const s = st.current;
+      if (s.adding) { setAdding(null); setRev(r => r + 1); }
+      else if (s.sub) setSub(null);
+      else if (s.tab !== 'today') setTab('today');
+      else { removeEventListener('popstate', pop); history.back(); return; }
+      history.pushState({ a: 1 }, '');
+      scrollTo(0, 0);
+    };
+    addEventListener('popstate', pop);
+    return () => removeEventListener('popstate', pop);
+  }, []);
 
   useEffect(() => { const t = setTimeout(() => setSlow(true), 5000); return () => clearTimeout(t); }, []);
 

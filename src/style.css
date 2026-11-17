@@ -278,7 +278,7 @@ details.more > :not(summary) + * { margin-top: 10px; }
 
 /* iPhone: khi bàn phím mở, thanh dưới (position: fixed) bị kéo trôi theo trang. Đang gõ thì ẩn thanh dưới. */
 @media (pointer: coarse) {
-  body:has(input:not([type="checkbox"]):not([type="file"]):focus, select:focus, textarea:focus) nav.tabs { display: none; }
+  body:has(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):focus, textarea:focus) nav.tabs { display: none; }
 }
 
 /* ---------- Hôm nay: ô đếm, nhóm gập/mở, dòng lô gọn ---------- */
