@@ -4,10 +4,10 @@ import Icon from './Icon.tsx';
 
 // Việc phải làm của một lô: báo trả / dán giảm giá / nhắc (lô chưa có HSD), kèm số ngày còn lại.
 export default function ActionLine({ a, status }: { a: Action; status: string }) {
-  if (status === 'return_notified') return <span className="act done"><Icon name="truck" size={15} />Đã báo trả NCC</span>;
-  if (status === 'discounted') return <span className="act done"><Icon name="tag" size={15} />Đã dán giảm giá</span>;
+  if (status === 'return_notified') return <span className="act pick"><Icon name="truck" size={15} />Đã báo trả NCC, chờ lấy</span>;
+  if (status === 'discounted') return <span className="act disc"><Icon name="tag" size={15} />Đã dán giảm giá</span>;
   const d = daysLeft(a.date);
-  const tone = d < 0 ? 'bad' : d <= 7 ? 'warn' : '';
+  const tone = d < 0 ? 'bad' : a.kind === 'discount' ? 'disc' : 'ret';      // màu theo việc, quá ngày thì đỏ
   const what = a.kind === 'return' ? 'Báo trả NCC trước' : a.kind === 'discount' ? 'Dán giảm giá từ' : 'Nhắc';
   const when = d < 0 ? `quá ${-d} ngày` : d === 0 ? 'hôm nay' : `còn ${d} ngày`;
   return (

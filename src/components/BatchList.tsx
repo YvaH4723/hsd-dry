@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { canDelete, canWrite, type Member } from '../supabase.ts';
 import { useShelves, useTerms, useZones, zoneFilter, type Shelf } from '../lib/db.ts';
 import ZoneChips from './ZoneChips.tsx';
+import LotSearchBar, { useLotSearch } from './LotSearch.tsx';
 import { loadBatches, updateBatchOffline } from '../lib/offline.ts';
 import { actionFor } from '../lib/action.ts';
 import { daysLeft, fmt } from '../lib/dates.ts';
@@ -24,12 +25,17 @@ export default function BatchList({ member, shelfId, productId, rev }: { member:
   const [range, setRange] = useState<string>('all');
   const [edit, setEdit] = useState<string | null>(null);
   const [err, setErr] = useState('');
+  const [shelfF, setShelfF] = useState('');
+  const [kind, setKind] = useState('');
+  const search = useLotSearch();
 
   const load = () => loadBatches(store, { shelfId, productId }).then(d => { setErr(''); setRows(d); }, (e: Error) => setErr(e.message));
   useEffect(() => { load(); }, [store, shelfId, productId, rev]);
 
   const top = !productId && !shelfId;           // chỉ lọc khu ở tab Hết hạn
-  const all = (rows ?? []).filter(top ? zoneFilter(zone, mine, shelves) : () => true);
+  const kindOf = (b: LotRow) => b.expiry_note === 'action_date' ? 'nohsd' : terms ? actionFor(b, b.products, terms).kind : '';
+  const all = (rows ?? []).filter(top ? zoneFilter(zone, mine, shelves) : () => true)
+    .filter(b => search.match(b) && (!shelfF || (b.shelf_id ?? 'none') === shelfF) && (!kind || kindOf(b) === kind));
   const noHsd = all.filter(b => b.expiry_note === 'action_date');
   const dated = all.filter(b => b.expiry_note !== 'action_date');
   const over = dated.filter(b => daysLeft(b.expiry_date) < 0).length;
@@ -58,14 +64,32 @@ export default function BatchList({ member, shelfId, productId, rev }: { member:
           {noHsd.length > 0 && <> · <b className="warn">{noHsd.length}</b> chưa có HSD</>}
         </p>
       )}
+      {top && rows && rows.length > 0 && <LotSearchBar q={search.q} setQ={search.setQ} />}
       {top && <ZoneChips zones={zones} mine={mine} value={zone} onChange={setZone} />}
+      {top && rows && rows.length > 0 && (
+        <div className="grid2">
+          <select aria-label="Lọc theo kệ" value={shelfF} onChange={e => setShelfF(e.target.value)}>
+            <option value="">Tất cả kệ</option>
+            {shelves.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            <option value="none">Chưa gắn kệ</option>
+          </select>
+          <select aria-label="Lọc theo việc" value={kind} onChange={e => setKind(e.target.value)}>
+            <option value="">Mọi việc</option>
+            <option value="return">Báo trả NCC</option>
+            <option value="discount">Dán giảm giá</option>
+            <option value="nohsd">Chưa có HSD</option>
+          </select>
+        </div>
+      )}
       {!productId && all.length > 0 && (
         <div className="chips" role="group" aria-label="Lọc theo số ngày còn lại">
           {RANGES.map(([k, t]) => <button key={k} aria-pressed={range === k} onClick={() => setRange(k)}>{t}</button>)}
         </div>
       )}
       {err && <p className="msg bad">{err}</p>}
-      {rows == null ? (!err && <LotsLoading />) : !all.length ? (
+      {rows == null ? (!err && <LotsLoading />) : !all.length && rows.length && top ? (
+        <p className="empty">{search.active ? `Không có lô nào khớp "${search.q.trim()}".` : 'Không có lô nào khớp bộ lọc.'}</p>
+      ) : !all.length ? (
         <div className="empty">
           <Icon name="box" size={28} />
           <b>{productId ? 'Sản phẩm này chưa có lô nào' : shelfId ? 'Kệ này chưa có lô nào' : 'Chưa có lô nào'}</b>

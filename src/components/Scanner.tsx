@@ -10,7 +10,7 @@ const INAPP = /Zalo/i.test(ua) ? 'Zalo' : /FBAN|FBAV|FB_IAB|Messenger/i.test(ua)
 
 const CAM_KEY = 'hsd.camera';
 
-export default function Scanner({ onCode }: { onCode: (code: string) => void }) {
+export default function Scanner({ onCode, auto = false }: { onCode: (code: string) => void; auto?: boolean }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
   const want = useRef(false);
@@ -103,6 +103,7 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
     const ios = /iphone|ipad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const vis = () => { if (document.hidden) { stop(); if (ios) want.current = false; } else if (want.current) start(); };
     alive.current = true;
+    if (auto) { want.current = true; start(); }
     document.addEventListener('visibilitychange', vis);
     return () => { alive.current = false; document.removeEventListener('visibilitychange', vis); stop(); };
   }, []);
