@@ -6,8 +6,10 @@ import ProductInfo, { ProductRow } from '../components/ProductInfo.tsx';
 import BatchList from '../components/BatchList.tsx';
 import Icon from '../components/Icon.tsx';
 import { LotsLoading } from '../components/Lot.tsx';
+import { localNoCode } from '../lib/offline.ts';
 
 const SHOW = 200;
+const attached = new Set<string>();     // đã gắn mã trong phiên này: bỏ khỏi danh sách Chưa có mã vạch ngay
 const vcode = (v: Vendor) => v.code.startsWith('TB-') ? 'chưa có mã NCC' : v.code;
 
 export default function Products({ member, onAdd, rev }: { member: Member; onAdd: (p: Product) => void; rev?: number }) {
@@ -19,6 +21,7 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
   const [open, setOpen] = useState<Product | null>(null);
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [picking, setPicking] = useState(false);
+  const [nocode, setNocode] = useState(false);
   const [all, setAll] = useState<Product[] | null>(null);       // toàn bộ sản phẩm của NCC đang chọn
   const terms = useTerms(store);
 
@@ -49,13 +52,14 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
     return () => { live = false; clearTimeout(t); };
   }, [q, store, vendor?.id]);
 
+  if (nocode && !open) return <NoCode back={() => setNocode(false)} openP={p => { setOpen(p); scrollTo(0, 0); }} />;
   if (picking) return <VendorPicker store={store} pick={v => { setVendor(v); setPicking(false); scrollTo(0, 0); }} back={() => setPicking(false)} />;
 
   if (open) return (
     <>
       <button className="back" onClick={() => setOpen(null)}><Icon name="back" size={20} />Quay lại</button>
       <div className="panel">
-        <ProductInfo p={open} member={member} terms={terms} onChange={p => { setOpen(p); setRows(r => r && r.map(x => x.id === p.id ? p : x)); setAll(r => r && r.map(x => x.id === p.id ? p : x)); }} />
+        <ProductInfo p={open} member={member} terms={terms} onChange={p => { if (p.barcodes?.length) attached.add(p.id); setOpen(p); setRows(r => r && r.map(x => x.id === p.id ? p : x)); setAll(r => r && r.map(x => x.id === p.id ? p : x)); }} />
       </div>
       {canWrite(member) && <button className="pri block" onClick={() => onAdd(open)}><Icon name="plus" size={18} />Thêm lô cho sản phẩm này</button>}
       <div className="sec"><h2>Lô đang theo dõi</h2></div>
@@ -83,7 +87,10 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
           <button className="icon" aria-label="Bỏ lọc NCC" onClick={() => setVendor(null)}><Icon name="x" /></button>
         </div>
       ) : (
-        <button className="block" onClick={() => setPicking(true)}><Icon name="truck" size={18} />Xem theo nhà cung cấp</button>
+        <div className="grid2">
+          <button onClick={() => setPicking(true)}><Icon name="truck" size={18} />Theo NCC</button>
+          <button onClick={() => { setNocode(true); scrollTo(0, 0); }}><Icon name="alert" size={18} />Chưa có mã vạch</button>
+        </div>
       )}
       {err && <p className="msg bad">{err}</p>}
       {rows != null ? (rows.length ? list(rows) : !err && <p className="note">Không tìm thấy “{q.trim()}”{vendor ? ' trong NCC này' : ''}. Thử bớt chữ, hoặc gõ mã AX.</p>)
@@ -130,6 +137,51 @@ function VendorPicker({ store, pick, back }: { store: string; pick: (v: Vendor) 
           {shown.length > SHOW && <p className="note">Còn {shown.length - SHOW} NCC, gõ thêm để lọc.</p>}
         </>
       )}
+    </>
+  );
+}
+
+// Sản phẩm chưa có mã vạch: đi kệ tìm hàng, mở sản phẩm, bấm "Quét mã vạch để gắn". Xếp theo nhóm hàng cho dễ đi theo kệ.
+function NoCode({ back, openP }: { back: () => void; openP: (p: Product) => void }) {
+  const [ps, setPs] = useState<Product[] | null>(null);
+  const [err, setErr] = useState('');
+  const [tb, setTb] = useState(false);
+  const [q, setQ] = useState('');
+  useEffect(() => { localNoCode().then(d => setPs(d.filter(p => !attached.has(p.id))), (e: Error) => setErr(e.message)); }, []);
+  const s = unaccent(q.trim());
+  const sel = (ps ?? []).filter(p => p.active !== tb && (!s || unaccent(`${p.name} ${p.name_vi ?? ''} ${p.ax_code ?? ''} ${p.vendors?.name ?? ''} ${p.category ?? ''}`).includes(s)));
+  const groups = new Map<string, Product[]>();
+  for (const p of sel.sort((a, b) => a.name.localeCompare(b.name))) {
+    const k = tb ? (p.vendors?.name ?? 'Chưa có NCC') : (p.category ?? 'Khác');
+    groups.set(k, [...(groups.get(k) ?? []), p]);
+  }
+  const nOn = (ps ?? []).filter(p => p.active).length, nTb = (ps ?? []).length - nOn;
+  let shown = 0;
+  return (
+    <>
+      <button className="back" onClick={back}><Icon name="back" size={20} />Quay lại</button>
+      <h2 className="title">Chưa có mã vạch</h2>
+      <p className="note">Tìm hàng trên kệ, mở sản phẩm rồi bấm <b>Quét mã vạch để gắn</b>. Gắn xong sản phẩm tự biến khỏi danh sách.</p>
+      <div className="seg" role="group" aria-label="Loại">
+        <button aria-pressed={!tb} onClick={() => setTb(false)}>Đang bán ({nOn})</button>
+        <button aria-pressed={tb} onClick={() => setTb(true)}>Chỉ trong file TB ({nTb})</button>
+      </div>
+      {tb && <p className="note">Hàng khu Dry có trong file tổng TB nhưng không có trong file GTB (có thể đã ngừng bán). Xếp theo NCC.</p>}
+      <div className="search"><Icon name="search" size={18} />
+        <input type="search" enterKeyHint="search" aria-label="Lọc" placeholder="Lọc theo tên, mã AX, NCC, nhóm" value={q} onChange={e => setQ(e.target.value)} />
+      </div>
+      {err && <p className="msg bad">{err}</p>}
+      {ps == null ? (!err && <LotsLoading />) : !sel.length ? <p className="empty">Không có sản phẩm nào.</p> : [...groups].map(([k, items]) => {
+        if (shown >= SHOW) return null;
+        const part = items.slice(0, SHOW - shown); shown += part.length;
+        return (
+          <section key={k}>
+            <div className="sec"><h2>{k}</h2><span className="cnt">{items.length}</span></div>
+            <div className="list">{part.map(p => <ProductRow key={p.id} p={p} onClick={() => openP(p)} />)}</div>
+          </section>
+        );
+      })}
+      {sel.length > SHOW && <p className="note">Đang hiện {SHOW}/{sel.length}. Gõ vào ô lọc để thu hẹp.</p>}
     </>
   );
 }

@@ -120,6 +120,12 @@ export async function localByVendor(vendorId: string): Promise<Product[]> {
   if (!products.length) throw new Error(NO_SNAPSHOT);
   return products.filter(p => p.vendor_id === vendorId);
 }
+// Sản phẩm chưa có mã vạch (từ bản lưu trên máy): đang bán, và hàng khu Dry chỉ có trong file tổng TB.
+export async function localNoCode(): Promise<Product[]> {
+  const { products } = await local();
+  if (!products.length) throw new Error(NO_SNAPSHOT);
+  return products.filter(p => !p.barcodes?.length && (p.active || p.category === 'TB 14.04'));
+}
 export const localTerms = async () => ({ terms: (await get<Term[]>('terms')) ?? [], store: await get<any>('store') });
 export const localShelves = async () => (await get<Shelf[]>('shelves')) ?? [];
 

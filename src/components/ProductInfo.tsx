@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
 import { money, pname, type Product } from '../lib/db.ts';
-import { isNet } from '../lib/offline.ts';
+import { codeVariants, isNet } from '../lib/offline.ts';
+import { canWrite } from '../supabase.ts';
+import Scanner from './Scanner.tsx';
 import { describeTerm, termAt, termFor, type Cfg } from '../lib/action.ts';
 import { TermEditor } from '../pages/Terms.tsx';
 import Icon from './Icon.tsx';
@@ -34,12 +36,28 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
   const [edit, setEdit] = useState(false);
   const [err, setErr] = useState('');
   const [vi, setVi] = useState<string | null>(null);
+  const [scan, setScan] = useState(false);
+  const [ok, setOk] = useState('');
   const t = terms ? termFor(p, terms.idx) : null;
 
   async function set(patch: Partial<Product>) {
     const { error } = await supabase.from('products').update(patch).eq('id', p.id);
     if (error) return setErr(isNet(error) ? 'Đang mất mạng: sửa sản phẩm cần có mạng.' : 'Lỗi: ' + error.message);
     setErr(''); onChange?.({ ...p, ...patch });
+  }
+
+  // Quét mã trên bao bì để gắn vào sản phẩm này.
+  async function attach(code: string) {
+    setScan(false); setOk(''); setErr('');
+    const rows = (/^\d{11,12}$/.test(code) ? codeVariants(code) : [code]).map(c => ({ store_id: member.store_id, product_id: p.id, code: c }));
+    const { data, error } = await supabase.from('barcodes').upsert(rows, { onConflict: 'store_id,code', ignoreDuplicates: true }).select('code');
+    if (error) return setErr(isNet(error) ? 'Đang mất mạng: gắn mã cần có mạng.' : 'Lỗi gắn mã: ' + error.message);
+    if (!data?.length) {
+      const { data: o } = await supabase.from('barcodes').select('products(name)').eq('store_id', member.store_id).in('code', rows.map(r => r.code)).limit(1).maybeSingle();
+      return setErr(`Không gắn được: mã ${code} đang thuộc "${(o as any)?.products?.name ?? 'sản phẩm khác'}".`);
+    }
+    setOk(`Đã gắn mã ${code}. Lần sau quét là ra sản phẩm này.`);
+    onChange?.({ ...p, barcodes: [...(p.barcodes ?? []), ...data.map(d => ({ code: d.code as string }))] });
   }
 
   return (
@@ -76,6 +94,10 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
         <dt>NCC</dt><dd>{vendorText(p)}</dd>
         <dt>Mã vạch</dt><dd className="num">{showCodes(p)}</dd>
       </dl>
+      {canWrite(member) && (scan
+        ? <><Scanner auto onCode={attach} /><button className="block" onClick={() => setScan(false)}>Hủy quét</button></>
+        : <button className={`block ${p.barcodes?.length ? '' : 'pri'}`} onClick={() => setScan(true)}><Icon name="camera" size={18} />{p.barcodes?.length ? 'Gắn thêm mã vạch' : 'Quét mã vạch để gắn'}</button>)}
+      {ok && <p className="msg ok">{ok}</p>}
       {admin && (
         <details className="more" open={!!t?.problem}>
           <summary>Điều khoản và cờ sản phẩm</summary>
