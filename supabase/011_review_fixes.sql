@@ -60,3 +60,8 @@ create index if not exists products_name_trgm on products using gin (name_search
 
 -- T5
 alter function touch_updated_at() set search_path = public;
+
+-- Hàm của trigger không cần gọi qua API.
+revoke execute on function guard_last_admin() from public, anon, authenticated;
+revoke execute on function guard_soft_delete() from public, anon, authenticated;
+revoke execute on function rls_auto_enable() from public, anon, authenticated;
