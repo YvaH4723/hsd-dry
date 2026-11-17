@@ -116,7 +116,7 @@ function Editor({ b, member, shelves, done }: { b: LotRow; member: Member; shelv
     setBusy(true);
     try {
       const view = 'shelf_id' in patch ? { shelves: shelves.find(s => s.id === patch.shelf_id) ?? null } : undefined;
-      await updateBatchOffline(member.store_id, b.id, patch, action, before, view);
+      await updateBatchOffline(member.store_id, b.id, patch, action, before, view, b.updated_at);
       done();
     } catch (e: any) { setMsg('Chưa lưu được: ' + e.message); setBusy(false); }
   }

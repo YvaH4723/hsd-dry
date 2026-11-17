@@ -65,3 +65,12 @@ alter function touch_updated_at() set search_path = public;
 revoke execute on function guard_last_admin() from public, anon, authenticated;
 revoke execute on function guard_soft_delete() from public, anon, authenticated;
 revoke execute on function rls_auto_enable() from public, anon, authenticated;
+
+-- M2: cộng dồn số lượng ngay trên máy chủ (hai người cùng cộng không mất phần của nhau). Chạy với quyền người gọi (RLS).
+create or replace function add_qty(p_id uuid, p_n int) returns table(qty int, updated_at timestamptz)
+language sql security invoker set search_path = public as $$
+  update batches set qty = batches.qty + p_n where id = p_id and deleted_at is null and p_n > 0
+  returning batches.qty, batches.updated_at;
+$$;
+revoke execute on function add_qty(uuid, int) from public, anon;
+grant execute on function add_qty(uuid, int) to authenticated;

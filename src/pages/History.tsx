@@ -22,7 +22,7 @@ export default function History({ member }: { member: Member }) {
 
   async function load() {
     const since = new Date(Date.now() - 60 * 864e5).toISOString();
-    const { data, error } = await supabase.from('batches').select(BATCH_COLS + ',updated_at,deleted_at').eq('store_id', store)
+    const { data, error } = await supabase.from('batches').select(BATCH_COLS + ',deleted_at').eq('store_id', store)
       .or(`deleted_at.not.is.null,status.in.(${DONE.join(',')})`).gte('updated_at', since).order('updated_at', { ascending: false }).limit(300);
     if (error) return setErr(isNet(error) ? 'Đang mất mạng: xem lịch sử cần có mạng.' : 'Lỗi: ' + error.message);
     const rs = data as unknown as Row[];
@@ -43,7 +43,7 @@ export default function History({ member }: { member: Member }) {
   async function restore(r: Row) {
     const patch = { deleted_at: null, status: 'on_shelf' };            // về lại danh sách đang theo dõi
     try {
-      await updateBatchOffline(store, r.id, patch, 'restore', { status: r.status, deleted_at: r.deleted_at });
+      await updateBatchOffline(store, r.id, patch, 'restore', { status: r.status, deleted_at: r.deleted_at }, undefined, r.updated_at);
       setDone(s => new Set(s).add(r.id));
     } catch (e: any) { setErr('Chưa khôi phục được: ' + e.message); }
   }

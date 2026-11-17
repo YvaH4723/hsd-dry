@@ -43,7 +43,7 @@ export async function fetchAll<T>(page: (from: number, to: number) => PromiseLik
   }
 }
 
-export const BATCH_COLS = 'id,qty,expiry_date,expiry_note,status,shelf_id,shelves(name),products(id,name,name_vi,ax_code,brand,vendor_id,no_return,sanh_dieu,vendors(code,name))';
+export const BATCH_COLS = 'id,qty,expiry_date,expiry_note,status,shelf_id,updated_at,shelves(name),products(id,name,name_vi,ax_code,brand,vendor_id,no_return,sanh_dieu,vendors(code,name))';
 const SNAP_PRODUCT_COLS = 'id,ax_code,name,name_vi,name_search,brand,price,active,category,vendor_id,no_return,sanh_dieu,vendors(code,name),barcodes(code)';
 const ACTIVE = ['on_shelf', 'discounted', 'return_notified'];
 
@@ -123,7 +123,8 @@ export const localShelves = async () => (await get<Shelf[]>('shelves')) ?? [];
 // ---------- hàng đợi thay đổi ----------
 export type Op =
   | { opId: string; kind: 'insert'; table: 'batches'; row: Record<string, unknown>; view: any }
-  | { opId: string; kind: 'update'; table: 'batches'; id: string; patch: Record<string, unknown>; view?: Record<string, unknown> }
+  | { opId: string; kind: 'update'; table: 'batches'; id: string; patch: Record<string, unknown>; view?: Record<string, unknown>; base?: string }
+  | { opId: string; kind: 'incr'; table: 'batches'; id: string; n: number; view?: Record<string, unknown> }
   | { opId: string; kind: 'audit'; row: Record<string, unknown> };
 
 let lock: Promise<unknown> = Promise.resolve();
@@ -138,10 +139,36 @@ function withOutbox<T>(fn: (box: Op[]) => Promise<[Op[], T]> | [Op[], T]): Promi
   return run;
 }
 
-// Sửa lô: máy chủ trả 0 dòng (lô không còn / không có quyền) thì coi là bị từ chối, không lặng lẽ bỏ qua.
-async function updateOne(id: string, patch: Record<string, unknown>) {
-  const { data, error } = await supabase.from('batches').update(patch).eq('id', id).select('id');
-  return { error: error ?? (data?.length ? null : { message: 'Lô không còn trên máy chủ hoặc không có quyền sửa' }) };
+// Chống ghi đè: mỗi lần sửa gửi kèm updated_at của lô lúc mở (base). Máy chủ chỉ ghi nếu lô chưa bị ai sửa từ đó,
+// trừ những lần sửa do chính máy này (own) để một người sửa liên tiếp không tự báo xung đột.
+let own: Record<string, string[]> | null = null;
+async function remember(id: string, ts: string) {
+  own ??= (await get<Record<string, string[]>>('own')) ?? {};
+  own[id] = [...(own[id] ?? []), ts].slice(-5);
+  await put('own', own);
+}
+const hm = (ts: string) => { const d = new Date(ts), p = (n: number) => String(n).padStart(2, '0'); return `${p(d.getHours())}:${p(d.getMinutes())} ${p(d.getDate())}/${p(d.getMonth() + 1)}`; };
+async function updateOne(id: string, patch: Record<string, unknown>, base?: string) {
+  own ??= (await get<Record<string, string[]>>('own')) ?? {};
+  let q = supabase.from('batches').update(patch).eq('id', id);
+  if (base) q = q.in('updated_at', [base, ...(own[id] ?? [])]);
+  const { data, error } = await q.select('id,updated_at');
+  if (error) return { error };
+  if (data?.length) { await remember(id, data[0].updated_at); return { error: null }; }
+  if (base) {                                                           // 0 dòng: lô bị người khác sửa trước, hay đã mất?
+    const { data: cur } = await supabase.from('batches').select('updated_at').eq('id', id).maybeSingle();
+    if (cur) return { error: { message: `Người khác đã sửa lô này lúc ${hm(cur.updated_at)} nên thay đổi của bạn chưa ghi. Mở lô xem lại, cần thì làm lại` } };
+  }
+  return { error: { message: 'Lô không còn trên máy chủ hoặc không có quyền sửa' } };
+}
+// Cộng dồn số lượng ngay trên máy chủ (qty = qty + n): hai người cùng cộng không mất phần của nhau.
+async function incrOne(id: string, n: number) {
+  const { data, error } = await supabase.rpc('add_qty', { p_id: id, p_n: n });
+  if (error) return { error };
+  const r = Array.isArray(data) ? data[0] : data;
+  if (!r) return { error: { message: 'Lô không còn trên máy chủ hoặc không có quyền sửa' } };
+  await remember(id, r.updated_at);
+  return { error: null };
 }
 
 // Đăng xuất: xóa hàng đợi + bản sao trên máy để người đăng nhập sau không gửi nhầm / xem nhầm.
@@ -161,12 +188,13 @@ export function flush(): Promise<void> {
       if (!op) break;
       const { error } =
         op.kind === 'insert' ? await supabase.from('batches').upsert(op.row, { onConflict: 'id', ignoreDuplicates: true })
-        : op.kind === 'update' ? await updateOne(op.id, op.patch)
+        : op.kind === 'update' ? await updateOne(op.id, op.patch, op.base)
+        : op.kind === 'incr' ? await incrOne(op.id, op.n)
         : await supabase.from('audit_log').insert(op.row);
       if (error && (isNet(error) || isAuth(error))) break;              // mất mạng / phiên hết hạn: giữ lại, thử sau
       if (error) {                                                      // máy chủ từ chối: bỏ thao tác, báo cho người dùng
         const v: any = op.kind === 'audit' ? null : op.view, nm = v?.products ? (v.products.name_vi || v.products.name) : '';
-        const what = op.kind === 'insert' ? `Thêm lô ${nm} · HSD ${op.row.expiry_date} · SL ${op.row.qty}` : op.kind === 'update' ? `Sửa lô ${nm}` : 'Nhật ký';
+        const what = op.kind === 'insert' ? `Thêm lô ${nm} · HSD ${op.row.expiry_date} · SL ${op.row.qty}` : op.kind === 'update' ? `Sửa lô ${nm} (${Object.keys(op.patch).join(', ')})` : op.kind === 'incr' ? `Cộng ${op.n} vào lô ${nm}` : 'Nhật ký';
         const f = [...state.failed, `${what}: ${error.message}`];
         await put('failed', f); emit({ failed: f });
       }
@@ -191,8 +219,11 @@ export function addBatchOffline(store: string, row: Record<string, unknown>, vie
   const id = uid(), full = { ...row, id, store_id: store };
   return enqueue({ opId: uid(), kind: 'insert', table: 'batches', row: full, view: { ...view, id } }, auditOp(store, id, 'add', null, full));
 }
-export function updateBatchOffline(store: string, id: string, patch: Record<string, unknown>, action: string, before: unknown, view?: Record<string, unknown>) {
-  return enqueue({ opId: uid(), kind: 'update', table: 'batches', id, patch, view }, auditOp(store, id, action, before, patch));
+export function updateBatchOffline(store: string, id: string, patch: Record<string, unknown>, action: string, before: unknown, view?: Record<string, unknown>, base?: string) {
+  return enqueue({ opId: uid(), kind: 'update', table: 'batches', id, patch, view, base }, auditOp(store, id, action, before, patch));
+}
+export function incrBatchOffline(store: string, id: string, n: number, before: unknown, view?: Record<string, unknown>) {
+  return enqueue({ opId: uid(), kind: 'incr', table: 'batches', id, n, view }, auditOp(store, id, 'add_qty', before, { add: n }));
 }
 export const auditOffline = (store: string, batch_id: string, action: string, before: unknown, after: unknown) => enqueue(auditOp(store, batch_id, action, before, after));
 
@@ -221,6 +252,7 @@ export function applyOutbox(rows: any[], box: Op[], f: { shelfId?: string; produ
   for (const o of box) {
     if (o.kind === 'insert' && !byId.has(o.view.id)) byId.set(o.view.id, { ...o.view });
     if (o.kind === 'update' && byId.has(o.id)) Object.assign(byId.get(o.id), o.patch, o.view);
+    if (o.kind === 'incr' && byId.has(o.id)) byId.get(o.id).qty += o.n;
   }
   return [...byId.values()]
     .filter(r => !r.deleted_at && ACTIVE.includes(r.status) && (!f.shelfId || r.shelf_id === f.shelfId) && (!f.productId || r.products?.id === f.productId))

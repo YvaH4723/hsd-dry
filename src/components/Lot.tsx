@@ -5,7 +5,7 @@ import ActionLine from './ActionLine.tsx';
 import Icon from './Icon.tsx';
 
 export interface LotRow {
-  id: string; qty: number; expiry_date: string; expiry_note: string | null; status: string; shelf_id?: string | null;
+  id: string; qty: number; expiry_date: string; updated_at?: string; expiry_note: string | null; status: string; shelf_id?: string | null;
   shelves: { name: string } | null; products: LotProduct & { name: string; name_vi?: string | null; ax_code: string | null };
 }
 

@@ -94,6 +94,8 @@ assert.equal(daysLeft('2026-11-20', new Date(2026, 10, 15, 23, 59)), 5);
   const a = actionFor({ expiry_date: '2027-03-31', expiry_note: null }, { id: 'p1', brand: 'Tw', vendor_id: 'v', no_return: false, sanh_dieu: false, vendors: { code: 'V' } }, cfg);
   assert.equal(a.date, '2027-03-19');
 }
+// Cộng dồn khi mất mạng hiện ngay trên màn.
+assert.equal(applyOutbox([{ id: 'x', qty: 5, status: 'on_shelf', expiry_date: '2027-01-01' }], [{ opId: 'o', kind: 'incr', table: 'batches', id: 'x', n: 2 } as Op], {})[0].qty, 7);
 console.log('Quy tắc: OK');
 
 const [cadPath, conPath] = process.argv.slice(2);

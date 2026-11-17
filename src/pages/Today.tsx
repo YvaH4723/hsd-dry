@@ -37,7 +37,7 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
     const prev = l.status;
     setLots(ls => ls && ls.map(x => x.id === l.id ? { ...x, status } : x));        // đổi ngay trên màn, gửi sau
     try {
-      await updateBatchOffline(store, l.id, { status }, status === 'on_shelf' ? 'undo' : status, { status: prev });
+      await updateBatchOffline(store, l.id, { status }, status === 'on_shelf' ? 'undo' : status, { status: prev }, undefined, l.updated_at);
       setToast({ text: `${DONE[status]}: ${pname(l.products)}`, undo: undoable ? () => { setToast(null); mark({ ...l, status }, prev, false); } : undefined });
     } catch (e: any) { setErr('Chưa lưu được: ' + e.message); load(); }
     busy.current.delete(l.id);

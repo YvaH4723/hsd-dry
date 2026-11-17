@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
 import { codeVariants, findByCode, pname, PRODUCT_COLS, searchProducts, useShelves, useTerms, type Product } from '../lib/db.ts';
 import { actionFor } from '../lib/action.ts';
-import { addBatchOffline, isNet, loadBatches, updateBatchOffline } from '../lib/offline.ts';
+import { addBatchOffline, incrBatchOffline, isNet, loadBatches } from '../lib/offline.ts';
 import { daysLeft, fmt } from '../lib/dates.ts';
 import ProductInfo, { ProductRow } from '../components/ProductInfo.tsx';
 import ActionLine from '../components/ActionLine.tsx';
@@ -120,7 +120,7 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
     if (!product || !same) return;
     setBusy(true);
     try {
-      await updateBatchOffline(store, same.id, { qty: same.qty + n }, 'edit', { qty: same.qty });
+      await incrBatchOffline(store, same.id, n, { qty: same.qty });
       setSaved(s => [`${pname(product)} · cộng ${n} vào lô HSD ${fmt(same.expiry_date)} (giờ SL ${same.qty + n})`, ...s].slice(0, 5));
       reset(`Đã cộng ${n} vào lô cũ. Quét món tiếp theo.`);
     } catch (e: any) { setMsg({ text: 'Chưa lưu được: ' + e.message, tone: 'bad' }); }
