@@ -7,7 +7,7 @@ const VI: [RegExp, string][] = [
   [/invalid login credentials/i, 'Sai email hoặc mật khẩu.'],
   [/already (been )?registered|already exists/i, 'Email này đã đăng ký. Bấm Đăng nhập.'],
   [/email not confirmed/i, 'Email chưa được xác nhận. Mở hộp thư để xác nhận rồi đăng nhập.'],
-  [/password should|weak password|at least 6/i, 'Mật khẩu cần ít nhất 6 ký tự, khó đoán hơn.'],
+  [/password should|weak password|at least 8/i, 'Mật khẩu cần ít nhất 8 ký tự, khó đoán hơn.'],
   [/invalid.*email|email.*invalid|validate email/i, 'Email không hợp lệ.'],
   [/rate limit|too many|security purposes/i, 'Thử quá nhiều lần. Đợi vài phút rồi thử lại.'],
   [/fetch|network|load failed/i, 'Không kết nối được. Kiểm tra mạng rồi thử lại.'],
@@ -20,7 +20,7 @@ export default function Login() {
   const [name, setName] = useState('');
   const [msg, setMsg] = useState<{ text: string; ok?: boolean } | null>(null);
   const [busy, setBusy] = useState<'in' | 'up' | null>(null);
-  const ready = !!email.trim() && pw.length >= 6 && !busy;
+  const ready = !!email.trim() && pw.length >= 8 && !busy;
 
   async function go(signUp: boolean) {
     if (!ready) return;
@@ -50,7 +50,7 @@ export default function Login() {
         {msg && <p className={`msg ${msg.ok ? 'ok' : 'bad'}`} role="alert">{msg.text}</p>}
         <button type="submit" className="pri block" disabled={!ready}>{busy === 'in' ? 'Đang đăng nhập…' : 'Đăng nhập'}</button>
         <button type="button" className="ghost block" disabled={!ready} onClick={() => go(true)}>{busy === 'up' ? 'Đang đăng ký…' : 'Chưa có tài khoản? Đăng ký'}</button>
-        <p className="note">Mật khẩu ít nhất 6 ký tự. Đăng ký xong, quản trị viên sẽ thấy bạn trong mục Chờ duyệt và cho bạn vào cửa hàng.</p>
+        <p className="note">Mật khẩu ít nhất 8 ký tự. Đăng ký xong, quản trị viên sẽ thấy bạn trong mục Chờ duyệt và cho bạn vào cửa hàng.</p>
       </form>
     </main>
   );
