@@ -1,8 +1,11 @@
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
+import { AskHost } from './components/Ask.tsx';
+import { applyTheme } from './lib/theme.ts';
 import './style.css';
 
-createRoot(document.getElementById('root')!).render(<App />);
+applyTheme();
+createRoot(document.getElementById('root')!).render(<><App /><AskHost /></>);
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register(import.meta.env.BASE_URL + 'sw.js', { scope: import.meta.env.BASE_URL });

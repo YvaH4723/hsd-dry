@@ -1,10 +1,24 @@
 import { useEffect, useState } from 'react';
 import { supabase, canDelete, canWrite, type Member } from '../supabase.ts';
-import { useShelves, useZones, type Shelf, type Zone } from '../lib/db.ts';
+import { useShelves, useTerms, useZones, type Shelf, type Zone } from '../lib/db.ts';
+import { actionFor, type Cfg } from '../lib/action.ts';
+import { daysLeft } from '../lib/dates.ts';
 import { isNet, loadBatches } from '../lib/offline.ts';
 import BatchList from '../components/BatchList.tsx';
 import Icon from '../components/Icon.tsx';
+import { ask } from '../components/Ask.tsx';
 
+type Tone = 'bad' | 'ret' | 'disc' | 'pick';
+const RANK: Record<Tone, number> = { bad: 0, ret: 1, disc: 2, pick: 3 };
+// Việc cần làm của một lô, cùng mốc với tab Hôm nay (7 ngày). null: chưa cần làm gì.
+function toneOf(b: any, terms: Cfg): Tone | null {
+  if (b.status === 'return_notified') return 'pick';
+  if (b.expiry_note !== 'action_date' && daysLeft(b.expiry_date) < 0) return b.status === 'on_shelf' || b.status === 'discounted' ? 'bad' : null;
+  if (b.status !== 'on_shelf') return null;
+  const a = actionFor(b, b.products, terms), d = daysLeft(a.date);
+  return d > 7 ? null : a.kind === 'discount' ? 'disc' : a.kind === 'return' && d < 0 ? 'bad' : 'ret';
+}
+type Count = { n: number; todo: number; tone: Tone | null };
 const errText = (e: { message: string }) => isNet(e) ? 'Đang mất mạng: sửa kệ cần có mạng.' : 'Lỗi: ' + e.message;
 
 export default function Shelves({ member, rev }: { member: Member; rev?: number }) {
@@ -12,18 +26,26 @@ export default function Shelves({ member, rev }: { member: Member; rev?: number 
   const { shelves, reload } = useShelves(store);
   const { zones, reload: reloadZones } = useZones(store);
   const zoneName = new Map(zones.map(z => [z.id, z.name]));
-  const [counts, setCounts] = useState<Record<string, number> | null>(null);
+  const terms = useTerms(store);
+  const [counts, setCounts] = useState<Record<string, Count> | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [err, setErr] = useState('');
 
   useEffect(() => {
+    if (!terms) return;
     loadBatches(store, {}).then(data => {
-      const c: Record<string, number> = {};
-      data.forEach(b => { const k = b.shelf_id ?? ''; c[k] = (c[k] ?? 0) + 1; });
+      const c: Record<string, Count> = {};
+      data.forEach(b => {
+        const k = b.shelf_id ?? '', x = c[k] ??= { n: 0, todo: 0, tone: null }, t = toneOf(b, terms);
+        x.n++;
+        if (t) { x.todo++; if (!x.tone || RANK[t] < RANK[x.tone]) x.tone = t; }
+      });
       setCounts(c);
     }, () => setCounts({}));
-  }, [store, shelves.length, rev]);
+  }, [store, shelves.length, rev, terms]);
+  const zoneGroups = [...zones.map(z => ({ id: z.id, name: z.name, items: shelves.filter(s => s.zone_id === z.id) })),
+    { id: '', name: zones.length ? 'Chưa chọn khu' : '', items: shelves.filter(s => !s.zone_id || !zoneName.has(s.zone_id)) }].filter(g => g.items.length);
 
   async function add() {
     const n = name.trim(); if (!n) return;
@@ -32,23 +54,33 @@ export default function Shelves({ member, rev }: { member: Member; rev?: number 
   }
 
   const cur = shelves.find(s => s.id === open);
-  if (cur) return <ShelfDetail shelf={cur} member={member} zones={zones} lots={counts?.[cur.id] ?? 0} rev={rev} back={() => setOpen(null)} changed={() => { reload(); }} />;
+  if (cur) return <ShelfDetail shelf={cur} member={member} zones={zones} lots={counts?.[cur.id]?.n ?? 0} rev={rev} back={() => setOpen(null)} changed={() => { reload(); }} />;
   return (
     <>
-      {shelves.length ? (
-        <div className="list">
-          {shelves.map(s => (
-            <div className="li" key={s.id}>
-              <button className="li-main" onClick={() => setOpen(s.id)}>
-                <span className="grow">{s.name}{s.zone_id && zoneName.has(s.zone_id) && <span className="note"> · {zoneName.get(s.zone_id)}</span>}</span>
-                <span className="note num">{counts ? `${counts[s.id] ?? 0} lô` : ''}</span>
-                <Icon name="chev" size={18} />
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : <p className="note">Chưa có kệ nào. Thêm kệ bên dưới, ví dụ: Kệ baby, Kệ bimbim, Kệ bột.</p>}
-      {(counts?.[''] ?? 0) > 0 && <p className="note">{counts!['']} lô chưa gắn kệ. Mở lô ở tab Hết hạn để chọn kệ.</p>}
+      {shelves.length ? zoneGroups.map(g => (
+        <section className="grp" key={g.id || 'none'}>
+          {g.name && <div className="sec"><h2>{g.name}</h2><span className="cnt">{g.items.length} kệ</span></div>}
+          <div className="list">
+            {g.items.map(s => {
+              const c = counts?.[s.id];
+              return (
+                <div className="li" key={s.id}>
+                  <button className="li-main shelfrow" onClick={() => setOpen(s.id)}>
+                    <span className={`kdot ${c?.tone ?? 'none'}`} aria-hidden="true" />
+                    <span className="grow">
+                      <span className="trow-name">{s.name}</span>
+                      <span className="trow-meta num">{!counts ? '\u00a0' : !c?.n ? <span className="mute">Chưa có lô</span>
+                        : <><span className="mute">{c.n} lô</span>{c.todo > 0 && <span className={c.tone ?? ''}> · {c.todo} cần xử lý</span>}</>}</span>
+                    </span>
+                    <Icon name="chev" size={18} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )) : <p className="note">Chưa có kệ nào. Thêm kệ bên dưới, ví dụ: Kệ baby, Kệ bimbim, Kệ bột.</p>}
+      {(counts?.['']?.n ?? 0) > 0 && <p className="note">{counts!['']!.n} lô chưa gắn kệ{counts!['']!.todo ? `, ${counts!['']!.todo} cần xử lý` : ''}. Mở lô ở tab Hết hạn để chọn kệ.</p>}
       {canWrite(member) && (
         <form className="row" onSubmit={e => { e.preventDefault(); add(); }}>
           <input className="grow" aria-label="Tên kệ mới" placeholder="Tên kệ mới" value={name} onChange={e => setName(e.target.value)} />
@@ -73,7 +105,7 @@ function ShelfDetail({ shelf, member, zones, lots, rev, back, changed }: { shelf
   }
   async function remove() {
     if (lots) return setErr(`Kệ còn ${lots} lô. Chuyển các lô sang kệ khác rồi mới xóa được.`);
-    if (!confirm(`Xóa kệ "${shelf.name}"?`)) return;
+    if (!await ask({ title: `Xóa kệ "${shelf.name}"?`, ok: 'Xóa kệ', danger: true })) return;
     const { error } = await supabase.from('shelves').update({ deleted_at: new Date().toISOString() }).eq('id', shelf.id);
     if (error) return setErr(errText(error));
     back(); changed();
@@ -123,7 +155,7 @@ function Zones({ store, zones, reload }: { store: string; zones: Zone[]; reload:
     setName(''); setErr(''); reload();
   }
   async function remove(z: Zone) {
-    if (!confirm(`Xóa khu "${z.name}"? Kệ trong khu này thành "chưa chọn khu".`)) return;
+    if (!await ask({ title: `Xóa khu "${z.name}"?`, body: 'Kệ trong khu này thành "chưa chọn khu". Lô không bị ảnh hưởng.', ok: 'Xóa khu', danger: true })) return;
     const r = await supabase.from('shelves').update({ zone_id: null }).eq('store_id', store).eq('zone_id', z.id);
     if (r.error) return failed(r.error);
     const { error } = await supabase.from('zones').update({ deleted_at: new Date().toISOString() }).eq('id', z.id);

@@ -58,6 +58,16 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
         </div>
         {admin && vi === null && <button className="icon" aria-label="Sửa tên tiếng Việt" onClick={() => setVi(p.name_vi ?? '')}><Icon name="edit" /></button>}
       </div>
+      {t && terms && (
+        <div className={`term ${t.problem ? 'warn' : t.kind === 'return' ? 'ret' : 'disc'}`}>
+          <Icon name={t.problem ? 'alert' : t.kind === 'return' ? 'truck' : 'tag'} size={20} />
+          <div>
+            <b>{t.problem ? 'Cần đặt điều khoản' : t.kind === 'return' ? `Báo trả NCC · ${t.days} ngày` : 'Không đổi trả · dán giảm giá'}</b>
+            <div>{describeTerm(t, terms)}</div>
+            {t.raw && t.problem && <div className="note">Câu gốc: {t.raw}</div>}
+          </div>
+        </div>
+      )}
       <div className="row" style={{ flexWrap: 'wrap' }}>
         {p.price == null ? <span className="note">Chưa có giá</span> : <span className="pi-price num">{money(p.price)}</span>}
         {!p.active && <span className="pill warn">Không có trong Cadencia</span>}
@@ -66,12 +76,6 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
         <dt>NCC</dt><dd>{vendorText(p)}</dd>
         <dt>Mã vạch</dt><dd className="num">{showCodes(p)}</dd>
       </dl>
-      {t && terms && (
-        <div className={`term ${t.problem ? 'warn' : ''}`}>
-          <Icon name={t.problem ? 'alert' : t.kind === 'return' ? 'truck' : 'tag'} size={18} />
-          <div>{describeTerm(t, terms)}{t.raw && t.problem && <div className="note">Câu gốc: {t.raw}</div>}</div>
-        </div>
-      )}
       {admin && (
         <details className="more" open={!!t?.problem}>
           <summary>Điều khoản và cờ sản phẩm</summary>

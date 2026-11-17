@@ -10,6 +10,7 @@ import Scanner from '../components/Scanner.tsx';
 import DateInput, { type DateVal } from '../components/DateInput.tsx';
 import Icon from '../components/Icon.tsx';
 import type { LotRow } from '../components/Lot.tsx';
+import { ask } from '../components/Ask.tsx';
 
 const LAST_SHELF = 'hsd.lastShelf';
 type Msg = { text: string; tone?: 'bad' | 'ok' | 'warn' } | null;
@@ -103,7 +104,7 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
   async function save() {
     if (!product || !date.exp) return;
     const d = daysLeft(date.exp);
-    if ((d < 0 || d > 5 * 365) && !confirm(`HSD ${fmt(date.exp)} ${d < 0 ? `đã quá ${-d} ngày` : 'xa hơn 5 năm'}. Có gõ nhầm năm không? Vẫn lưu?`)) return;
+    if ((d < 0 || d > 5 * 365) && !await ask({ title: `HSD ${fmt(date.exp)} ${d < 0 ? `đã quá ${-d} ngày` : 'xa hơn 5 năm'}`, body: 'Có gõ nhầm năm không? Kiểm tra lại ngày in trên bao bì.', ok: 'Vẫn lưu' })) return;
     setBusy(true);
     try {
       const row = { product_id: product.id, shelf_id: shelf || null, qty: n, expiry_date: date.exp, mfg_date: date.mfg };

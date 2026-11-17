@@ -9,6 +9,7 @@ import { daysLeft, fmt } from '../lib/dates.ts';
 import DateInput, { type DateVal } from './DateInput.tsx';
 import LotInfo, { LotsLoading, type LotRow } from './Lot.tsx';
 import Icon from './Icon.tsx';
+import { ask } from './Ask.tsx';
 
 const RANGES = [['all', 'Tất cả'], ['over', 'Quá hạn'], ['7', '≤ 7 ngày'], ['30', '≤ 30 ngày'], ['90', '≤ 90 ngày']] as const;
 const rel = (d: number) => d < 0 ? `Quá ${-d} ngày` : d === 0 ? 'Hết hạn hôm nay' : `Còn ${d} ngày`;
@@ -171,7 +172,7 @@ function Editor({ b, member, shelves, done }: { b: LotRow; member: Member; shelv
         <button className="pri" disabled={busy || n < 1 || !exp} onClick={save}>Lưu</button>
         <button disabled={busy} onClick={() => upd({ status: 'sold_out' }, 'sold_out')}>Bán hết</button>
         {b.status !== 'on_shelf' && <button disabled={busy} onClick={() => upd({ status: 'on_shelf' }, 'undo')}>Hoàn tác {b.status === 'discounted' ? 'giảm giá' : 'báo trả'}</button>}
-        {canDelete(member) && <button className="danger" disabled={busy} onClick={() => confirm('Xóa lô này? Lô bị ẩn khỏi danh sách, vẫn còn trong bản sao lưu.') && upd({ deleted_at: new Date().toISOString() }, 'delete')}>Xóa</button>}
+        {canDelete(member) && <button className="danger" disabled={busy} onClick={async () => await ask({ title: 'Xóa lô này?', body: 'Lô bị ẩn khỏi danh sách. Khôi phục được ở Khác → Lịch sử, khôi phục.', ok: 'Xóa lô', danger: true }) && upd({ deleted_at: new Date().toISOString() }, 'delete')}>Xóa</button>}
       </div>
       {msg && <p className="msg bad">{msg}</p>}
     </div>

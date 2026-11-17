@@ -3,12 +3,13 @@ import { supabase, canWrite, type Member } from '../supabase.ts';
 import { BATCH_COLS, pname } from '../lib/db.ts';
 import { isNet, updateBatchOffline } from '../lib/offline.ts';
 import { fmt, iso } from '../lib/dates.ts';
-import LotInfo, { LotsLoading, type LotRow } from '../components/Lot.tsx';
+import { LotsLoading, type LotRow } from '../components/Lot.tsx';
 
 type Row = LotRow & { updated_at: string; deleted_at: string | null };
 const DONE = ['sold_out', 'returned', 'discarded', 'discounted', 'return_notified'];
 const KINDS: [string, string][] = [['all', 'Tất cả'], ['deleted', 'Đã xóa'], ['sold_out', 'Bán hết'], ['returned', 'NCC đã lấy'], ['discarded', 'Đã hủy'], ['return_notified', 'Đã báo trả'], ['discounted', 'Đã dán giảm giá']];
-const label = (r: Row) => r.deleted_at ? 'Đã xóa' : KINDS.find(k => k[0] === r.status)?.[1] ?? r.status;
+const label = (r: Row) => r.deleted_at ? 'Đã xóa' : r.status === 'on_shelf' ? 'Đang trên kệ' : KINDS.find(k => k[0] === r.status)?.[1] ?? r.status;
+const tone = (r: Row) => r.deleted_at || r.status === 'discarded' ? 'bad' : r.status === 'discounted' ? 'disc' : r.status === 'returned' || r.status === 'return_notified' ? 'pick' : '';
 const when = (s: string) => { const d = new Date(s); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${fmt(iso(d))}`; };
 
 // Lô đã xử lý / đã xóa trong 60 ngày gần nhất: xem ai làm, lúc nào; bấm nhầm thì Khôi phục về lại danh sách.
@@ -60,10 +61,17 @@ export default function History({ member }: { member: Member }) {
       {rows == null ? (!err && <LotsLoading />) : !shown.length ? <p className="empty">Không có lô nào.</p> : (
         <div className="list">
           {shown.map(r => (
-            <div className="li li-body stack" key={r.id}>
-              <LotInfo l={r} title={pname(r.products)} />
+            <div className="li li-body hrow" key={r.id}>
+              <div className="lot-top">
+                <span className="lot-name">{pname(r.products)}</span>
+                <span className="lot-qty num">SL {r.qty}</span>
+              </div>
+              <div className="lot-meta">
+                {r.expiry_note === 'action_date' ? <span>Chưa có HSD</span> : <span className="num">HSD {fmt(r.expiry_date)}</span>}
+                <span>{r.shelves?.name ?? 'Chưa gắn kệ'}</span>
+              </div>
               <div className="row">
-                <span className={`pill ${r.deleted_at || r.status === 'discarded' ? 'bad' : ''}`}>{label(r)}</span>
+                <span className={`pill ${tone(r)}`}>{label(r)}</span>
                 <span className="note grow">{who.get(r.id) ?? '…'} · {when(r.deleted_at ?? r.updated_at)}</span>
                 {canWrite(member) && (done.has(r.id)
                   ? <span className="note ok">Đã khôi phục</span>

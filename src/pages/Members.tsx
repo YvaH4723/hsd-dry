@@ -4,6 +4,7 @@ import { isNet } from '../lib/offline.ts';
 import { useZones } from '../lib/db.ts';
 import Icon from '../components/Icon.tsx';
 import { LotsLoading } from '../components/Lot.tsx';
+import { ask } from '../components/Ask.tsx';
 
 interface Row { user_id: string; name: string; email: string; role: Member['role']; can_write: boolean; can_delete: boolean; zones?: string[] }
 const ROLES: [Member['role'], string, string][] = [
@@ -57,7 +58,7 @@ export default function Members({ member, myId }: { member: Member; myId?: strin
     setRows(rs => rs && rs.map(x => x.user_id === r.user_id ? { ...x, ...patch } : x));
   }
   async function remove(r: Row) {
-    if (!confirm(`Bỏ ${r.name} (${r.email}) khỏi cửa hàng? Người này sẽ không mở được dữ liệu nữa. Lô họ đã nhập vẫn giữ nguyên.`)) return;
+    if (!await ask({ title: `Bỏ ${r.name} khỏi cửa hàng?`, body: `${r.email} sẽ không mở được dữ liệu nữa. Lô người này đã nhập vẫn giữ nguyên.`, ok: 'Bỏ khỏi cửa hàng', danger: true })) return;
     const { error } = await supabase.from('members').delete().eq('store_id', store).eq('user_id', r.user_id);
     if (error) return setMsg({ text: errText(error) });
     load();

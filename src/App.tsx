@@ -19,6 +19,8 @@ import PushToggle from './components/PushToggle.tsx';
 import Icon, { type IconName } from './components/Icon.tsx';
 import { clearLocal, isNet, startSync, useSync } from './lib/offline.ts';
 import { syncPush } from './components/PushToggle.tsx';
+import { ask } from './components/Ask.tsx';
+import { getTheme, setTheme, type Theme } from './lib/theme.ts';
 
 const MEMBER_KEY = 'hsd.member';
 const cachedMember = (uid?: string): Member | null => {
@@ -115,7 +117,8 @@ export default function App() {
 
 // Đăng xuất chỉ trên máy này (máy khác cùng tài khoản vẫn giữ đăng nhập).
 async function logout(pending: number) {
-  if (pending && !confirm(`Còn ${pending} thay đổi chưa gửi lên máy chủ. Đăng xuất bây giờ thì các thay đổi này bị BỎ. Nên đợi có mạng cho gửi xong. Vẫn đăng xuất?`)) return;
+  if (!await ask(pending ? { title: `Còn ${pending} thay đổi chưa gửi`, body: 'Đăng xuất bây giờ thì các thay đổi này bị bỏ. Nên đợi có mạng cho gửi xong rồi mới đăng xuất.', ok: 'Vẫn đăng xuất', danger: true }
+    : { title: 'Đăng xuất khỏi máy này?', body: 'Dữ liệu lưu trên máy sẽ được xóa. Đăng nhập lại để dùng tiếp.', ok: 'Đăng xuất' })) return;
   try { localStorage.removeItem(MEMBER_KEY); localStorage.removeItem('hsd.zones'); } catch { /* */ }
   try {                                                                 // gỡ thông báo của tài khoản này trên máy, người sau tự bật lại
     const sub = await (await navigator.serviceWorker?.getRegistration())?.pushManager.getSubscription();
@@ -165,6 +168,7 @@ function More({ member, email, uid, sub, setSub }: { member: Member; email?: str
         ))}
       </div>
       <PushToggle store={member.store_id} />
+      <ThemePick />
       <div className="sec"><h2>Tài khoản</h2></div>
       <div className="panel">
         <div className="row">
@@ -174,5 +178,19 @@ function More({ member, email, uid, sub, setSub }: { member: Member; email?: str
         <button className="danger block" onClick={() => logout(s.pending)}><Icon name="logout" size={18} />Đăng xuất</button>
       </div>
     </>
+  );
+}
+
+// Giao diện sáng / tối, lưu riêng trên máy này.
+function ThemePick() {
+  const [t, setT] = useState<Theme>(getTheme);
+  return (
+    <div className="panel">
+      <div className="row"><Icon name="sun" size={22} /><div className="grow">Giao diện</div></div>
+      <div className="seg" role="group" aria-label="Giao diện">
+        {([['auto', 'Theo máy'], ['light', 'Sáng'], ['dark', 'Tối']] as [Theme, string][]).map(([k, label]) =>
+          <button key={k} aria-pressed={t === k} onClick={() => { setTheme(k); setT(k); }}>{label}</button>)}
+      </div>
+    </div>
   );
 }

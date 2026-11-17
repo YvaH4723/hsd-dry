@@ -7,6 +7,7 @@ import { isNet } from '../lib/offline.ts';
 import { OWN_BRAND } from '../lib/action.ts';
 import Icon from '../components/Icon.tsx';
 import { LotsLoading } from '../components/Lot.tsx';
+import { ask } from '../components/Ask.tsx';
 
 interface T { id: string; vendor_id: string; brand: string | null; product_id: string | null; action: 'return' | 'discount'; days: number | null; raw_text: string | null; needs_review: boolean; source: string }
 interface V { id: string; code: string; name: string }
@@ -72,7 +73,7 @@ export default function Terms({ member }: { member: Member }) {
               <div className="grow">
                 <div className="lot-name">{v.name}</div>
                 <div className="note num">{v.code.startsWith('TB-') ? 'Chưa có mã NCC' : v.code}</div>
-                <div className={`act ${bad(m) && !own(v) ? 'warn' : ''}`} style={{ marginTop: 4 }}>{own(v) ? `Hàng Ân Nam / Annam Gourmet: luôn dán giảm giá trước HSD ${cfg.discountDays} ngày` : describe(m)}</div>
+                <div className={`act ${own(v) ? 'disc' : bad(m) ? 'warn' : m!.action === 'return' ? 'ret' : 'disc'}`} style={{ marginTop: 4 }}>{own(v) ? `Hàng Ân Nam / Annam Gourmet: luôn dán giảm giá trước HSD ${cfg.discountDays} ngày` : describe(m)}</div>
                 {rules.map(t => <div className="note" key={t.id}>Nhãn {t.brand}: {describe(t)}</div>)}
               </div>
             );
@@ -129,7 +130,7 @@ export function TermEditor({ store, vendor, main, done }: { store: string; vendo
     reloadTerms(); done();
   }
   async function remove() {
-    if (!cur || !confirm(`Bỏ luật riêng của nhãn ${brand}? Nhãn này sẽ theo điều khoản của cả NCC.`)) return;
+    if (!cur || !await ask({ title: `Bỏ luật riêng của nhãn ${brand}?`, body: 'Nhãn này sẽ theo điều khoản của cả NCC.', ok: 'Bỏ luật riêng', danger: true })) return;
     setBusy(true);
     const { error } = await supabase.from('terms').update({ deleted_at: new Date().toISOString() }).eq('id', cur.id);
     setBusy(false);
