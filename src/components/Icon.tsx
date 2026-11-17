@@ -9,6 +9,8 @@ const P: Record<string, ReactNode> = {
   menu: <path d="M4 7h16M4 12h16M4 17h16" />,
   plus: <path d="M12 5v14M5 12h14" />,
   minus: <path d="M5 12h14" />,
+  flash: <path d="M13 3 5.5 13.5H12L11 21l7.5-10.5H12z" />,
+  flip: <><path d="M4 9a8 8 0 0 1 14.5-3.5M20 15a8 8 0 0 1-14.5 3.5" /><path d="M18.5 2.5v3h-3M5.5 21.5v-3h3" /></>,
   x: <path d="M6 6l12 12M18 6 6 18" />,
   back: <path d="M15 5l-7 7 7 7" />,
   chev: <path d="M9 5l7 7-7 7" />,

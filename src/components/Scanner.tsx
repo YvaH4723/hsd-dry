@@ -8,6 +8,8 @@ import Icon from './Icon.tsx';
 const ua = navigator.userAgent;
 const INAPP = /Zalo/i.test(ua) ? 'Zalo' : /FBAN|FBAV|FB_IAB|Messenger/i.test(ua) ? 'Facebook / Messenger' : /Instagram/i.test(ua) ? 'Instagram' : /musical_ly|TikTok/i.test(ua) ? 'TikTok' : /; wv\)/.test(ua) ? 'một ứng dụng khác' : '';
 
+const CAM_KEY = 'hsd.camera';
+
 export default function Scanner({ onCode }: { onCode: (code: string) => void }) {
   const video = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -19,6 +21,8 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
   const [on, setOn] = useState(false);
   const [msg, setMsg] = useState('');
   const [typed, setTyped] = useState('');
+  const [cams, setCams] = useState<MediaDeviceInfo[]>([]);        // camera sau (hoặc tất cả nếu máy không ghi tên)
+  const [torch, setTorch] = useState<boolean | null>(null);        // null: máy / trình duyệt không cho bật đèn
 
   const emit = (code: string) => {
     const now = Date.now();
@@ -37,11 +41,21 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
       // Tải bộ đọc mã và mở camera cùng lúc cho nhanh.
       const detP = getDetector();
       detP.catch(() => {});
-      s = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } } });
+      const id = localStorage.getItem(CAM_KEY);
+      const size = { width: { ideal: 1280 }, height: { ideal: 720 } };
+      s = await navigator.mediaDevices.getUserMedia({ audio: false, video: id ? { deviceId: { exact: id }, ...size } : { facingMode: { ideal: 'environment' }, ...size } })
+        .catch(e => { if (!id || e?.name === 'NotAllowedError') throw e; localStorage.removeItem(CAM_KEY); return navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: 'environment' }, ...size } }); });
       const det = await detP;
       // Bấm Tắt hoặc rời màn trong lúc đang mở camera: nhả camera ngay.
       if (!want.current || !alive.current || document.hidden) { s.getTracks().forEach(t => t.stop()); setMsg(''); return; }
       stream.current = s; setOn(true); setMsg('');
+      const track = s.getVideoTracks()[0], caps: any = track.getCapabilities?.() ?? {};
+      setTorch(caps.torch ? false : null);
+      if (caps.focusMode?.includes('continuous')) track.applyConstraints({ advanced: [{ focusMode: 'continuous' } as any] }).catch(() => {});
+      navigator.mediaDevices.enumerateDevices().then(ds => {
+        const all = ds.filter(d => d.kind === 'videoinput'), back = all.filter(d => /back|rear|sau|environment/i.test(d.label));
+        setCams(back.length >= 2 ? back : all);
+      }).catch(() => {});
       // Đợi khung camera hiện ra (đang ẩn) rồi mới phát: iPhone phát vào khung đang ẩn thì hay ra màn đen.
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
       const v = video.current!, cur = s;
@@ -65,9 +79,23 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
       want.current = false;
     } finally { starting.current = false; }
   }
+  // Đổi sang camera kế tiếp (iPhone Pro: góc rộng / tele / siêu rộng). Nhớ lựa chọn cho lần sau.
+  async function flip() {
+    const cur = stream.current?.getVideoTracks()[0]?.getSettings().deviceId;
+    const i = cams.findIndex(c => c.deviceId === cur), next = cams[(i + 1) % cams.length];
+    if (!next) return;
+    localStorage.setItem(CAM_KEY, next.deviceId);
+    stop(); want.current = true; await start();
+  }
+  async function toggleTorch() {
+    const t = stream.current?.getVideoTracks()[0];
+    if (!t || torch === null) return;
+    try { await t.applyConstraints({ advanced: [{ torch: !torch } as any] }); setTorch(!torch); }
+    catch { setTorch(null); setMsg('Máy này không cho bật đèn từ trình duyệt.'); }
+  }
   function stop() {
     stream.current?.getTracks().forEach(t => t.stop());
-    stream.current = null; setOn(false);
+    stream.current = null; setOn(false); setTorch(null);
   }
 
   useEffect(() => {
@@ -91,7 +119,12 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
   return (
     <div className="panel scanner">
       {INAPP && <p className="msg warn">Bạn đang mở app trong {INAPP}, camera có thể bị bật toàn màn hình rồi tắt. Bấm nút ⋯ ở góc → "Mở bằng trình duyệt" (Chrome / Safari), rồi thêm app ra màn hình chính.</p>}
-      <div className="viewport" hidden={!on}><video ref={video} playsInline muted /><div className="guide" /></div>
+      <div className="viewport" hidden={!on}><video ref={video} playsInline muted /><div className="guide" />
+        <div className="camtools">
+          {torch !== null && <button className={torch ? 'on' : ''} aria-label={torch ? 'Tắt đèn pin' : 'Bật đèn pin'} aria-pressed={torch} onClick={toggleTorch}><Icon name="flash" size={20} /></button>}
+          {cams.length > 1 && <button aria-label="Đổi camera" onClick={flip}><Icon name="flip" size={20} /></button>}
+        </div>
+      </div>
       <div className="row">
         {on ? <button className="grow" onClick={() => { want.current = false; stop(); }}><Icon name="x" size={18} />Tắt camera</button>
             : <button className="pri grow" onClick={() => { want.current = true; start(); }}><Icon name="camera" size={18} />Bật camera</button>}
