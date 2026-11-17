@@ -6,7 +6,19 @@ import Icon from './Icon.tsx';
 const VAPID_PUBLIC = 'BOgCMmZbH1w_ilrDPxdqdN6TH0KsaCsUP669S7vMRb8ppPueCzXHfWHBeRAKefFtjDRDNxp8tfU4Y7Lt9THXc3o';
 const key = (b64: string) => Uint8Array.from(atob((b64 + '='.repeat((4 - b64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
 const supported = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-const iosTab = /iphone|ipad/i.test(navigator.userAgent) && !(navigator as any).standalone;
+const ios = /iphone|ipad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);   // iPad đời mới báo là Mac
+const iosTab = ios && !(navigator as any).standalone;
+
+// Mở app: máy đã bật thông báo thì ghi lại đăng ký lên máy chủ (phòng khi dòng cũ bị xóa / đổi tài khoản).
+export async function syncPush(store: string) {
+  if (!supported || Notification.permission !== 'granted') return;
+  try {
+    const sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription();
+    if (!sub) return;
+    const j = sub.toJSON();
+    await supabase.from('push_subs').upsert({ endpoint: sub.endpoint, store_id: store, p256dh: j.keys!.p256dh, auth: j.keys!.auth }, { onConflict: 'endpoint' });
+  } catch { /* thử lại lần mở sau */ }
+}
 
 // Bật / tắt thông báo hằng ngày (7:00 và 15:00) trên máy này.
 export default function PushToggle({ store }: { store: string }) {

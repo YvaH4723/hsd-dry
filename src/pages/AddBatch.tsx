@@ -3,7 +3,7 @@ import { supabase, type Member } from '../supabase.ts';
 import { codeVariants, findByCode, pname, PRODUCT_COLS, searchProducts, useShelves, useTerms, type Product } from '../lib/db.ts';
 import { actionFor } from '../lib/action.ts';
 import { addBatchOffline, isNet, loadBatches, updateBatchOffline } from '../lib/offline.ts';
-import { fmt } from '../lib/dates.ts';
+import { daysLeft, fmt } from '../lib/dates.ts';
 import ProductInfo, { ProductRow } from '../components/ProductInfo.tsx';
 import ActionLine from '../components/ActionLine.tsx';
 import Scanner from '../components/Scanner.tsx';
@@ -102,6 +102,8 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
   }
   async function save() {
     if (!product || !date.exp) return;
+    const d = daysLeft(date.exp);
+    if ((d < 0 || d > 5 * 365) && !confirm(`HSD ${fmt(date.exp)} ${d < 0 ? `đã quá ${-d} ngày` : 'xa hơn 5 năm'}. Có gõ nhầm năm không? Vẫn lưu?`)) return;
     setBusy(true);
     try {
       const row = { product_id: product.id, shelf_id: shelf || null, qty: n, expiry_date: date.exp, mfg_date: date.mfg };

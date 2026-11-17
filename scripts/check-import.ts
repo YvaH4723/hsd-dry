@@ -77,6 +77,23 @@ assert.equal(daysLeft('2026-11-20', new Date(2026, 10, 15, 23, 59)), 5);
   assert.deepEqual(applyOutbox(rows, box, { shelfId: 'k1' }).map(r => r.id), ['n']);
   assert.equal(applyOutbox([...rows, { ...box[0].kind === 'insert' ? (box[0] as any).view : {} }], box, {}).length, 2); // đã lên máy chủ: không trùng
 }
+// Dòng lỗi (trùng mã vạch) vẫn có AX trong file: không được ẩn sản phẩm đó.
+{
+  const row = (ax: string, bc: string) => ({ 'AX Code': ax, 'Description': 'SP ' + ax, 'Bar Code': bc, 'Category': '101 - X' });
+  const ex = ['F1', 'F2'].map(ax => ({ ax, name: 'SP ' + ax, price: null, vendorCode: '', active: true, category: mapRow(row(ax, '')).category }));
+  const p = diffCatalog([row('f1', '8930000000011'), row('F2', '8930000000011')], ex);
+  assert.deepEqual(p.hidden.map(h => h.ax), []);
+  assert.equal(p.errors.length, 1);
+}
+// Điều khoản cấp sản phẩm thắng dù dòng đó có điền nhãn, và dù NCC của sản phẩm đã đổi.
+{
+  const cfg = { idx: indexTerms([
+    { vendor_id: 'v', brand: null, product_id: null, action: 'return', days: 30, raw_text: null, needs_review: false },
+    { vendor_id: 'old', brand: 'Tw', product_id: 'p1', action: 'return', days: 7, raw_text: null, needs_review: false },
+  ]), discountDays: 45, returnBuffer: 5 };
+  const a = actionFor({ expiry_date: '2027-03-31', expiry_note: null }, { id: 'p1', brand: 'Tw', vendor_id: 'v', no_return: false, sanh_dieu: false, vendors: { code: 'V' } }, cfg);
+  assert.equal(a.date, '2027-03-19');
+}
 console.log('Quy tắc: OK');
 
 const [cadPath, conPath] = process.argv.slice(2);

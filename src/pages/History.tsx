@@ -2,14 +2,14 @@ import { useEffect, useState } from 'react';
 import { supabase, canWrite, type Member } from '../supabase.ts';
 import { BATCH_COLS, pname } from '../lib/db.ts';
 import { isNet, updateBatchOffline } from '../lib/offline.ts';
-import { fmt } from '../lib/dates.ts';
+import { fmt, iso } from '../lib/dates.ts';
 import LotInfo, { LotsLoading, type LotRow } from '../components/Lot.tsx';
 
 type Row = LotRow & { updated_at: string; deleted_at: string | null };
 const DONE = ['sold_out', 'returned', 'discarded', 'discounted', 'return_notified'];
 const KINDS: [string, string][] = [['all', 'Tất cả'], ['deleted', 'Đã xóa'], ['sold_out', 'Bán hết'], ['returned', 'NCC đã lấy'], ['discarded', 'Đã hủy'], ['return_notified', 'Đã báo trả'], ['discounted', 'Đã dán giảm giá']];
 const label = (r: Row) => r.deleted_at ? 'Đã xóa' : KINDS.find(k => k[0] === r.status)?.[1] ?? r.status;
-const when = (s: string) => { const d = new Date(s); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${fmt(d.toISOString().slice(0, 10))}`; };
+const when = (s: string) => { const d = new Date(s); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${fmt(iso(d))}`; };
 
 // Lô đã xử lý / đã xóa trong 60 ngày gần nhất: xem ai làm, lúc nào; bấm nhầm thì Khôi phục về lại danh sách.
 export default function History({ member }: { member: Member }) {
@@ -41,7 +41,7 @@ export default function History({ member }: { member: Member }) {
   useEffect(() => { load(); }, [store]);
 
   async function restore(r: Row) {
-    const patch = r.deleted_at ? { deleted_at: null } : { status: 'on_shelf' };
+    const patch = { deleted_at: null, status: 'on_shelf' };            // về lại danh sách đang theo dõi
     try {
       await updateBatchOffline(store, r.id, patch, 'restore', { status: r.status, deleted_at: r.deleted_at });
       setDone(s => new Set(s).add(r.id));

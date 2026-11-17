@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { canWrite, type Member } from '../supabase.ts';
 import { pname, useShelves, useTerms, useZones, zoneFilter } from '../lib/db.ts';
 import ZoneChips from '../components/ZoneChips.tsx';
@@ -30,14 +30,17 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
   useEffect(() => { load(); }, [store, rev]);
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(null), 6000); return () => clearTimeout(t); } }, [toast]);
 
+  const busy = useRef(new Set<string>());                                   // chặn bấm đúp
   async function mark(l: LotRow, status: string, undoable = true) {
+    if (busy.current.has(l.id)) return;
+    busy.current.add(l.id);
     const prev = l.status;
     setLots(ls => ls && ls.map(x => x.id === l.id ? { ...x, status } : x));        // đổi ngay trên màn, gửi sau
     try {
       await updateBatchOffline(store, l.id, { status }, status === 'on_shelf' ? 'undo' : status, { status: prev });
       setToast({ text: `${DONE[status]}: ${pname(l.products)}`, undo: undoable ? () => { setToast(null); mark({ ...l, status }, prev, false); } : undefined });
-    } catch (e: any) { setErr('Chưa lưu được: ' + e.message); }
-    load();
+    } catch (e: any) { setErr('Chưa lưu được: ' + e.message); load(); }
+    busy.current.delete(l.id);
   }
 
   if (!lots || !terms) return err ? <p className="msg bad">{err}</p> : <LotsLoading />;
@@ -47,7 +50,7 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
   const open = all.filter(x => x.l.status === 'on_shelf' && !expired(x));
   const left = (x: Item) => daysLeft(x.a.date);
   const byDate = (x: Item, y: Item) => x.a.date.localeCompare(y.a.date);
-  const groups: { title: string; tone: string; items: Item[]; btns: (x: Item) => Btn[] }[] = [
+  const groups: { title: string; tone: string; items: Item[]; btns: (x: Item) => Btn[]; note?: string }[] = [
     { title: 'Quá HSD', tone: 'bad', items: all.filter(x => expired(x) && (x.l.status === 'on_shelf' || x.l.status === 'discounted')),
       btns: x => [['discarded', 'Đã hủy', true], ...(x.a.kind === 'return' ? [['return_notified', 'Đã báo trả'] as Btn] : []), SOLD] },
     { title: 'Quá ngày báo trả', tone: 'bad', items: open.filter(x => x.a.kind !== 'discount' && left(x) < 0).sort(byDate), btns: retBtns },
@@ -56,6 +59,11 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
     { title: 'Đã báo trả, chờ NCC lấy', tone: 'acc', items: all.filter(x => x.l.status === 'return_notified').sort(byDate), btns: () => [['returned', 'NCC đã lấy', true], ['on_shelf', 'Hoàn tác']] },
   ];
   const todo = groups.reduce((n, g) => n + g.items.length, 0);
+  // Chưa rõ điều khoản mà HSD đã gần: có thể NCC cho trả hàng sớm hơn mốc giảm giá 45 ngày, cần đặt điều khoản ngay.
+  const shown = new Set(groups.flatMap(g => g.items.map(x => x.l.id)));
+  const unclear = open.filter(x => x.a.kind === 'discount' && x.a.label && daysLeft(x.l.expiry_date) <= 120 && !shown.has(x.l.id)).sort(byDate);
+  if (unclear.length) groups.push({ title: 'Chưa rõ điều khoản, HSD còn dưới 120 ngày', tone: 'warn', items: unclear, btns: () => [SOLD],
+    note: 'App đang tạm tính dán giảm giá trước HSD 45 ngày. Nếu NCC cho trả hàng, quản trị viên đặt điều khoản (mở sản phẩm hoặc Khác → Điều khoản) để không lỡ hạn báo trả.' });
   const today = new Date().toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
 
   return (
@@ -73,6 +81,7 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
       {groups.filter(g => g.items.length).map(g => (
         <section className="grp" key={g.title}>
           <div className="sec"><h2><span className={`dot ${g.tone}`} />{g.title}</h2><span className="cnt">{g.items.length} lô</span></div>
+          {g.note && <p className="note">{g.note}</p>}
           <div className="list">
             {g.items.map(x => (
               <div className="li li-body" key={x.l.id}>

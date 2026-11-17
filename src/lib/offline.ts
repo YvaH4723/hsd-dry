@@ -138,6 +138,18 @@ function withOutbox<T>(fn: (box: Op[]) => Promise<[Op[], T]> | [Op[], T]): Promi
   return run;
 }
 
+// Sửa lô: máy chủ trả 0 dòng (lô không còn / không có quyền) thì coi là bị từ chối, không lặng lẽ bỏ qua.
+async function updateOne(id: string, patch: Record<string, unknown>) {
+  const { data, error } = await supabase.from('batches').update(patch).eq('id', id).select('id');
+  return { error: error ?? (data?.length ? null : { message: 'Lô không còn trên máy chủ hoặc không có quyền sửa' }) };
+}
+
+// Đăng xuất: xóa hàng đợi + bản sao trên máy để người đăng nhập sau không gửi nhầm / xem nhầm.
+export async function clearLocal() {
+  const db = await idb();
+  await new Promise<void>((ok, fail) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').clear(); t.oncomplete = () => ok(); t.onerror = () => fail(t.error); });
+}
+
 let flushing: Promise<void> | null = null;
 export function flush(): Promise<void> {
   return flushing ??= (async () => {
@@ -149,11 +161,13 @@ export function flush(): Promise<void> {
       if (!op) break;
       const { error } =
         op.kind === 'insert' ? await supabase.from('batches').upsert(op.row, { onConflict: 'id', ignoreDuplicates: true })
-        : op.kind === 'update' ? await supabase.from('batches').update(op.patch).eq('id', op.id)
+        : op.kind === 'update' ? await updateOne(op.id, op.patch)
         : await supabase.from('audit_log').insert(op.row);
       if (error && (isNet(error) || isAuth(error))) break;              // mất mạng / phiên hết hạn: giữ lại, thử sau
       if (error) {                                                      // máy chủ từ chối: bỏ thao tác, báo cho người dùng
-        const f = [...state.failed, `${op.kind === 'insert' ? 'Thêm lô' : op.kind === 'update' ? 'Sửa lô' : 'Nhật ký'}: ${error.message}`];
+        const v: any = op.kind === 'audit' ? null : op.view, nm = v?.products ? (v.products.name_vi || v.products.name) : '';
+        const what = op.kind === 'insert' ? `Thêm lô ${nm} · HSD ${op.row.expiry_date} · SL ${op.row.qty}` : op.kind === 'update' ? `Sửa lô ${nm}` : 'Nhật ký';
+        const f = [...state.failed, `${what}: ${error.message}`];
         await put('failed', f); emit({ failed: f });
       }
       await withOutbox(box => [box.filter(o => o.opId !== op.opId), null]);

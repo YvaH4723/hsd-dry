@@ -10,6 +10,8 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.ready.then(() => caches.open('hsd-v1')).then(c => {
     const base = location.origin + import.meta.env.BASE_URL;
     const urls = performance.getEntriesByType('resource').map(e => e.name).filter(u => u.startsWith(base) && !u.includes('/thu-quet/index'));
+    // Bỏ file js/css của các bản cũ cho cache khỏi phình sau mỗi lần cập nhật.
+    c.keys().then(ks => ks.forEach(k => { if (k.url.includes('/assets/') && !urls.includes(k.url)) c.delete(k); }));
     return c.addAll([...new Set([base, ...urls])]);
   }).catch(() => {});
 }

@@ -71,7 +71,9 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
   }
 
   useEffect(() => {
-    const vis = () => { if (document.hidden) stop(); else if (want.current) start(); };
+    // iPhone (app ngoài màn hình chính) hay hỏi lại quyền camera: không tự bật lại, để người dùng bấm.
+    const ios = /iphone|ipad/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const vis = () => { if (document.hidden) { stop(); if (ios) want.current = false; } else if (want.current) start(); };
     alive.current = true;
     document.addEventListener('visibilitychange', vis);
     return () => { alive.current = false; document.removeEventListener('visibilitychange', vis); stop(); };
@@ -80,7 +82,7 @@ export default function Scanner({ onCode }: { onCode: (code: string) => void }) 
   async function photo(f?: File) {
     if (!f) return;
     try {
-      const r = await (await getDetector()).detect(await createImageBitmap(f));
+      const r = await (await getDetector()).detect(await createImageBitmap(f, { resizeWidth: 1600, resizeQuality: 'high' }));   // ảnh 12MP làm máy cũ treo
       r[0] ? emit(r[0].rawValue) : setMsg('Không đọc được mã trong ảnh. Chụp gần, đủ sáng, giữ thẳng.');
     } catch (e: any) { setMsg('Lỗi đọc ảnh: ' + e.message); }
   }

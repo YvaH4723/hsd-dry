@@ -24,7 +24,7 @@ export function mapRow(r: Record<string, unknown>): CatalogItem {
   const sub = String(r['Sub.Department'] ?? '');
   const price = r['Price'] == null || r['Price'] === '' ? null : Math.round(Number(r['Price']));
   return {
-    ax: String(r['AX Code'] ?? '').trim(), name, nameSearch: unaccent(name),
+    ax: String(r['AX Code'] ?? '').trim().toUpperCase(), name, nameSearch: unaccent(name),
     brand: String(r['Brand Name'] ?? '').trim(),
     vendorCode: normVendor(r['Vendor']), vendorName: String(r['Suppliers'] ?? '').trim(),
     price: Number.isFinite(price) ? price : null,
@@ -48,11 +48,12 @@ export function diffCatalog(rows: Record<string, unknown>[], existing: Existing[
   rows.forEach((r, i) => {
     const it = mapRow(r), row = i + 1;
     if (!it.ax) return p.errors.push({ row, reason: 'Thiếu AX Code' });
+    if (seenAx.has(it.ax)) return p.errors.push({ row, reason: `AX Code ${it.ax} lặp` });
+    seenAx.add(it.ax);                       // có trong file thì không bị ẩn, kể cả khi dòng đó lỗi
     if (!it.name) return p.errors.push({ row, reason: 'Thiếu tên' });
-    if (it.ax && seenAx.has(it.ax)) return p.errors.push({ row, reason: `AX Code ${it.ax} lặp` });
     const clash = it.barcodes.find(b => seenBc.has(b));
     if (clash) return p.errors.push({ row, reason: `Mã vạch ${clash} trùng với ${seenBc.get(clash)}` });
-    seenAx.add(it.ax); it.barcodes.forEach(b => seenBc.set(b, it.ax || it.name));
+    it.barcodes.forEach(b => seenBc.set(b, it.ax || it.name));
     const e = old.get(it.ax);
     if (!e) return p.added.push(it);
     const changes = [
@@ -82,7 +83,7 @@ export function diffTB(rows: Record<string, unknown>[], existing: Existing[], co
   const p: Preview = { mode: 'tb', skipped: 0, added: [], updated: [], unchanged: 0, hidden: [], errors: [] };
   rows.forEach((r, i) => {
     const row = i + 2;
-    const ax = String(r[TB_COL] ?? '').trim(), name = String(r['Product name'] ?? '').trim();
+    const ax = String(r[TB_COL] ?? '').trim().toUpperCase(), name = String(r['Product name'] ?? '').trim();
     if (!ax) return p.errors.push({ row, reason: 'Thiếu mã AX' });
     if (!name) return p.errors.push({ row, reason: 'Thiếu tên' });
     if (seen.has(ax)) return p.errors.push({ row, reason: `Mã AX ${ax} lặp` });

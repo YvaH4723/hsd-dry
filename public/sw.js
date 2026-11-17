@@ -11,7 +11,7 @@ self.addEventListener('fetch', e => {
   if (r.method !== 'GET' || u.origin !== location.origin || !u.href.startsWith(APP)) return;
   if (r.mode === 'navigate') {
     if (u.href !== APP && u.href !== APP + 'index.html') return;   // trang thử quét: đi thẳng ra mạng
-    e.respondWith(fetch(r).then(res => { const cp = res.clone(); caches.open(CACHE).then(c => c.put(APP, cp)); return res; })
+    e.respondWith(fetch(r).then(res => { if (res.ok) { const cp = res.clone(); caches.open(CACHE).then(c => c.put(APP, cp)); } return res; })
       .catch(() => caches.match(APP)));
     return;
   }

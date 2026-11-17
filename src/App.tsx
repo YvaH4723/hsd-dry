@@ -17,7 +17,8 @@ import SyncPanel, { SyncBadge, syncedText } from './components/SyncPanel.tsx';
 import Backup from './components/Backup.tsx';
 import PushToggle from './components/PushToggle.tsx';
 import Icon, { type IconName } from './components/Icon.tsx';
-import { isNet, startSync, useSync } from './lib/offline.ts';
+import { clearLocal, isNet, startSync, useSync } from './lib/offline.ts';
+import { syncPush } from './components/PushToggle.tsx';
 
 const MEMBER_KEY = 'hsd.member';
 const cachedMember = (uid?: string): Member | null => {
@@ -60,7 +61,7 @@ export default function App() {
   // Mất mạng, hoặc mạng chậm (quá 5 giây chưa đọc được tài khoản): mở app ngay bằng thông tin đã lưu trên máy.
   const offlineMember = (session === null && !navigator.onLine) || (slow && member === undefined) ? cachedMember(session?.user.id) : null;
   const me = member ?? offlineMember;
-  useEffect(() => { if (me) startSync(me.store_id); }, [me?.store_id]);
+  useEffect(() => { if (me) { startSync(me.store_id); syncPush(me.store_id); } }, [me?.store_id]);
 
   if (!offlineMember && (session === undefined || (session && member === undefined)))
     return <main className="page"><p className="note">{slow ? 'Mạng đang chậm, vẫn đang chờ máy chủ… Kiểm tra wifi / 4G.' : 'Đang tải…'}</p></main>;
@@ -113,10 +114,12 @@ export default function App() {
 }
 
 // Đăng xuất chỉ trên máy này (máy khác cùng tài khoản vẫn giữ đăng nhập).
-function logout(pending: number) {
-  if (pending && !confirm(`Còn ${pending} thay đổi chưa gửi lên máy chủ. Nên đợi có mạng cho gửi xong rồi hãy đăng xuất. Vẫn đăng xuất?`)) return;
-  try { localStorage.removeItem(MEMBER_KEY); } catch { /* */ }
-  supabase.auth.signOut({ scope: 'local' });
+async function logout(pending: number) {
+  if (pending && !confirm(`Còn ${pending} thay đổi chưa gửi lên máy chủ. Đăng xuất bây giờ thì các thay đổi này bị BỎ. Nên đợi có mạng cho gửi xong. Vẫn đăng xuất?`)) return;
+  try { localStorage.removeItem(MEMBER_KEY); localStorage.removeItem('hsd.zones'); } catch { /* */ }
+  await clearLocal().catch(() => {});
+  await supabase.auth.signOut({ scope: 'local' });
+  location.reload();
 }
 
 const ROLE: Record<Member['role'], string> = { admin: 'Quản trị', staff: 'Nhân viên', viewer: 'Chỉ xem' };

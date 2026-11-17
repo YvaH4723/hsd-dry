@@ -12,7 +12,8 @@ export interface TermInfo { kind: 'return' | 'discount'; days: number | null; pr
 export interface Action { kind: 'return' | 'discount' | 'reminder'; date: string; label?: string; raw?: string | null }
 
 export const OWN_BRAND = new Set(['AFF01', 'SG99']);   // Ân Nam, Annam Gourmet: luôn dán giảm giá
-const key = (v: string, brand: string | null, product: string | null) => `${v}|${(brand ?? '').trim().toLowerCase()}|${product ?? ''}`;
+// Điều khoản cấp sản phẩm khớp theo sản phẩm, bỏ qua nhãn và NCC (NCC đổi sau khi nhập file vẫn giữ được).
+const key = (v: string, brand: string | null, product: string | null) => product ? `p|${product}` : `${v}|${(brand ?? '').trim().toLowerCase()}|`;
 
 export const indexTerms = (terms: Term[]) => new Map(terms.map(t => [key(t.vendor_id, t.brand, t.product_id), t]));
 export const termAt = (idx: Map<string, Term>, vendor: string, brand: string | null = null, product: string | null = null) => idx.get(key(vendor, brand, product));
