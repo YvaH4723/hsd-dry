@@ -33,7 +33,7 @@ export function mapRow(r: Record<string, unknown>): CatalogItem {
   };
 }
 
-export interface Existing { id?: string; ax: string; name: string; price: number | null; vendorCode: string; active: boolean; keep?: boolean; category?: string | null }
+export interface Existing { id?: string; ax: string; name: string; brand?: string | null; price: number | null; vendorCode: string; active: boolean; keep?: boolean; category?: string | null }
 export interface Preview {
   mode?: 'gtb' | 'tb'; skipped?: number;
   added: CatalogItem[]; updated: { item: CatalogItem; changes: string[] }[]; unchanged: number;
@@ -57,7 +57,7 @@ export function diffCatalog(rows: Record<string, unknown>[], existing: Existing[
     const e = old.get(it.ax);
     if (!e) return p.added.push(it);
     const changes = [
-      e.name !== it.name && 'tên', e.price !== it.price && 'giá', e.vendorCode !== it.vendorCode && 'NCC', !e.active && 'bán lại',
+      e.name !== it.name && 'tên', e.price !== it.price && 'giá', e.vendorCode !== it.vendorCode && 'NCC', e.brand != null && (e.brand || '') !== (it.brand || '') && 'nhãn', !e.active && 'bán lại',
     ].filter(Boolean) as string[];
     changes.length ? p.updated.push({ item: it, changes }) : p.unchanged++;
   });
@@ -89,7 +89,7 @@ export function diffTB(rows: Record<string, unknown>[], existing: Existing[], co
     if (seen.has(ax)) return p.errors.push({ row, reason: `Mã AX ${ax} lặp` });
     seen.add(ax);
     const vendorName = String(r['SUPPLIER'] ?? '').trim();
-    const price = Math.round(Number(r['PRICE']));
+    const price = Math.round(Number(String(r['PRICE'] ?? '').replace(/[,\s]/g, '')));
     const sub = String(r['col6'] ?? '');
     const it: CatalogItem = {
       ax, name, nameSearch: unaccent(name), brand: '', vendorName,

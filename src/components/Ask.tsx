@@ -9,7 +9,7 @@ export const ask = (q: Omit<Q, 'done'>) => new Promise<boolean>(done => show ? s
 export function AskHost() {
   const [q, setQ] = useState<Q | null>(null);
   const okRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => { show = setQ; return () => { show = null; }; }, []);
+  useEffect(() => { show = n => setQ(p => { p?.done(false); return n; }); return () => { show = null; }; }, []);   // hỏi chồng: câu cũ coi như Hủy
   useEffect(() => {
     if (!q) return;
     (document.activeElement as HTMLElement | null)?.blur?.();   // ẩn bàn phím đang mở

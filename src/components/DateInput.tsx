@@ -9,10 +9,13 @@ const typing = (s: string) => {
   return d.length <= 2 ? d : d.length <= 4 ? `${d.slice(0, 2)}/${d.slice(2)}` : `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}`;
 };
 
+// Xóa trúng dấu /: xóa luôn số đứng trước, không kẹt.
+const back = (old: string, v: string) => v.length < old.length && v.replace(/\D/g, '') === old.replace(/\D/g, '') ? typing(v.replace(/\D/g, '').slice(0, -1)) : typing(v);
+
 // Nhập HSD (ddmmyy) hoặc NSX + hạn N tháng/ngày. Nhớ cách nhập lần trước.
 export default function DateInput({ onChange, initial }: { onChange: (v: DateVal) => void; initial?: string }) {
   const [mode, setMode] = useState<'hsd' | 'nsx'>(() => { try { return !initial && localStorage.getItem(MODE) === 'nsx' ? 'nsx' : 'hsd'; } catch { return 'hsd'; } });
-  const [hsd, setHsd] = useState(initial ? typing(fmt(initial)) : '');
+  const [hsd, setHsd] = useState(initial ? typing(fmt(initial).replace(/\/(\d\d)(\d\d)$/, '/$2')) : '');   // 30/06/28: xóa bớt năm không thành năm 2020
   const [nsx, setNsx] = useState('');
   const [n, setN] = useState('');
   const [unit, setUnit] = useState<'month' | 'day'>('month');
@@ -37,10 +40,10 @@ export default function DateInput({ onChange, initial }: { onChange: (v: DateVal
         <button type="button" aria-pressed={mode === 'nsx'} onClick={() => upd({ m: 'nsx' })}>NSX + hạn dùng</button>
       </div>
       {mode === 'hsd' ? (
-        <input inputMode="numeric" aria-label="Hạn sử dụng" placeholder="dd/mm/yy" value={hsd} onChange={e => upd({ h: typing(e.target.value) })} />
+        <input inputMode="numeric" aria-label="Hạn sử dụng" placeholder="dd/mm/yy" value={hsd} onChange={e => upd({ h: back(hsd, e.target.value) })} />
       ) : (
         <>
-          <input inputMode="numeric" aria-label="Ngày sản xuất" placeholder="NSX dd/mm/yy" value={nsx} onChange={e => upd({ x: typing(e.target.value) })} />
+          <input inputMode="numeric" aria-label="Ngày sản xuất" placeholder="NSX dd/mm/yy" value={nsx} onChange={e => upd({ x: back(nsx, e.target.value) })} />
           <div className="row" style={{ marginTop: 8 }}>
             <input className="grow" inputMode="numeric" aria-label="Hạn dùng" placeholder="Hạn dùng" value={n} onChange={e => upd({ nn: e.target.value.replace(/\D/g, '').slice(0, 4) })} />
             <select style={{ width: 110 }} aria-label="Đơn vị" value={unit} onChange={e => upd({ u: e.target.value as 'month' | 'day' })}><option value="month">tháng</option><option value="day">ngày</option></select>

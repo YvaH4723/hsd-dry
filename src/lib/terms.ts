@@ -17,7 +17,7 @@ export function parseTerm(value: unknown): ParsedTerm {
   if (/^no\b/i.test(s)) return { action: 'return', days: null, review: true, raw };
 
   // "Yes - Food: 36days - NF: 216 days": quầy Dry lấy phần Food
-  const food = /\n/.test(raw) ? null : /^yes\b.*?(?<!\w)Food:\s*(\d+)\s*d/i.exec(s);
+  const food = /\n/.test(raw) ? null : /^yes\b.*?(?<![\w-])Food:\s*(\d+)\s*d/i.exec(s);
   if (food) return +food[1] ? { action: 'return', days: +food[1], review: false, raw } : { action: 'discount', days: null, review: false, raw };
 
   const m = /\n/.test(raw) ? null : SIMPLE.exec(s.replace(/^yes\b\s*[-–:]?\s*/i, ''));

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabase.ts';
 import { unaccent } from './cadencia.ts';
-import { auditOffline, codeVariants, fetchAll, isNet, localByVendor, localFindByCode, localSearch, localShelves, localTerms, localVendors } from './offline.ts';
+import { saveTerms, auditOffline, codeVariants, fetchAll, isNet, localByVendor, localFindByCode, localSearch, localShelves, localTerms, localVendors } from './offline.ts';
 export { BATCH_COLS, codeVariants, fetchAll } from './offline.ts';
 
 export interface Product {
@@ -135,6 +135,7 @@ async function fetchTerms(store: string): Promise<Cfg> {
       fetchAll<Term>((a, b) => supabase.from('terms').select('vendor_id,brand,product_id,action,days,raw_text,needs_review').eq('store_id', store).is('deleted_at', null).order('id').range(a, b)),
       supabase.from('stores').select('*').eq('id', store).single().then(ok),
     ]);
+    saveTerms(t, s).catch(() => {});        // mất mạng mở lại app vẫn đúng điều khoản / cài đặt mới
     return { idx: indexTerms(t), ...settingsOf(s) };
   } catch (e) {
     if (!isNet(e)) throw e;

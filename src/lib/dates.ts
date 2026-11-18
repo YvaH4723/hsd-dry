@@ -9,6 +9,7 @@ export function parseDmy(s: string): string | null {
   const m = /^(\d{2})(\d{2})(\d{2}|\d{4})$/.exec(t);
   if (!m) return null;
   const y = m[3].length === 2 ? 2000 + +m[3] : +m[3], mo = +m[2], d = +m[1];
+  if (y < 2000 || y > 2100) return null;
   const dt = new Date(y, mo - 1, d);
   return dt.getFullYear() === y && dt.getMonth() === mo - 1 && dt.getDate() === d ? iso(dt) : null;
 }

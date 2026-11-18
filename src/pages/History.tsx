@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { supabase, canWrite, type Member } from '../supabase.ts';
+import { supabase, canDelete, canWrite, type Member } from '../supabase.ts';
 import { BATCH_COLS, pname } from '../lib/db.ts';
 import { isNet, updateBatchOffline } from '../lib/offline.ts';
 import { fmt, iso } from '../lib/dates.ts';
@@ -42,7 +42,8 @@ export default function History({ member }: { member: Member }) {
   useEffect(() => { load(); }, [store]);
 
   async function restore(r: Row) {
-    const patch = { deleted_at: null, status: 'on_shelf' };            // về lại danh sách đang theo dõi
+    // Lô bị xóa: giữ trạng thái cũ (đã báo trả, đã dán giảm giá…). Lô đã bán / hủy / trả: về lại kệ.
+    const patch = r.deleted_at && ['on_shelf', 'discounted', 'return_notified'].includes(r.status) ? { deleted_at: null } : { deleted_at: null, status: 'on_shelf' };
     try {
       await updateBatchOffline(store, r.id, patch, 'restore', { status: r.status, deleted_at: r.deleted_at }, undefined, r.updated_at);
       setDone(s => new Set(s).add(r.id));
@@ -73,7 +74,7 @@ export default function History({ member }: { member: Member }) {
               <div className="row">
                 <span className={`pill ${tone(r)}`}>{label(r)}</span>
                 <span className="note grow">{who.get(r.id) ?? '…'} · {when(r.deleted_at ?? r.updated_at)}</span>
-                {canWrite(member) && (done.has(r.id)
+                {(r.deleted_at ? canDelete(member) : canWrite(member)) && (done.has(r.id)
                   ? <span className="note ok">Đã khôi phục</span>
                   : <button className="sm" onClick={() => restore(r)}>Khôi phục</button>)}
               </div>

@@ -111,7 +111,8 @@ export default function Scanner({ onCode, auto = false }: { onCode: (code: strin
   async function photo(f?: File) {
     if (!f) return;
     try {
-      const r = await (await getDetector()).detect(await createImageBitmap(f, { resizeWidth: 1600, resizeQuality: 'high' }));   // ảnh 12MP làm máy cũ treo
+      const bmp = await createImageBitmap(f, { resizeWidth: 1600, resizeQuality: 'high' });   // ảnh 12MP làm máy cũ treo
+      const r = await (await getDetector()).detect(bmp).finally(() => bmp.close());
       r[0] ? emit(r[0].rawValue) : setMsg('Không đọc được mã trong ảnh. Chụp gần, đủ sáng, giữ thẳng.');
     } catch (e: any) { setMsg('Lỗi đọc ảnh: ' + e.message); }
   }

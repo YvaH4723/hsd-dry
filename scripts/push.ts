@@ -39,7 +39,7 @@ for (const s of d.stores) {
   for (const sub of subs) {
     try { await webpush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload, { TTL: 6 * 3600 }); sent++; }
     catch (e: any) {
-      if ([401, 403, 404, 410].includes(e.statusCode)) await rpc('push_remove', { p_token: token, p_endpoint: sub.endpoint });   // máy đã gỡ app / tắt thông báo
+      if ([404, 410].includes(e.statusCode)) await rpc('push_remove', { p_token: token, p_endpoint: sub.endpoint });   // máy đã gỡ app / tắt thông báo
       else console.error('Lỗi gửi', e.statusCode, e.body);
     }
   }

@@ -104,6 +104,15 @@ assert.equal(applyOutbox([{ id: 'x', qty: 5, status: 'on_shelf', expiry_date: '2
   assert.equal(whoLine({ created_by: 'x', created_at: '2026-11-18T01:00:00Z' }, N, now), 'người cũ thêm 18/11');
   assert.equal(whoLine({ created_by: null }, N, now), '');
 }
+{ // Đánh giá lần 2: "Non-Food" không bị đọc thành "Food"; năm ngoài 2000–2100 bị từ chối.
+  const { parseTerm: pt } = await import('../src/lib/terms.ts');
+  const { parseDmy: pd } = await import('../src/lib/dates.ts');
+  assert.equal(pt('Yes - Non-Food: 216 days - Food: 36 days').days, 36);
+  assert.equal(pt('Yes - Food: 36days - NF: 216 days').days, 36);
+  assert.equal(pd('30/06/0228'), null);
+  assert.equal(pd('300628'), '2028-06-30');
+  console.log('Đánh giá 2: OK');
+}
 console.log('Quy tắc: OK');
 
 const [cadPath, conPath] = process.argv.slice(2);

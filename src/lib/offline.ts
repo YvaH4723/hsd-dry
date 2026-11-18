@@ -134,6 +134,7 @@ export async function localAddCodes(id: string, codes: string[]) {
   p.barcodes = [...(p.barcodes ?? []), ...codes.map(code => ({ code }))];
   await put('products', products); mem = null;
 }
+export const saveTerms = (terms: Term[], store: unknown) => Promise.all([put('terms', terms), put('store', store)]);
 export const localTerms = async () => ({ terms: (await get<Term[]>('terms')) ?? [], store: await get<any>('store') });
 export const localShelves = async () => (await get<Shelf[]>('shelves')) ?? [];
 
@@ -175,13 +176,18 @@ async function updateOne(id: string, patch: Record<string, unknown>, base?: stri
   if (base) {                                                           // 0 dòng: lô bị người khác sửa trước, hay đã mất?
     const { data: cur, error: e2 } = await supabase.from('batches').select('updated_at').eq('id', id).maybeSingle();
     if (e2) return { error: e2 };                                       // rớt mạng giữa chừng: giữ trong hàng đợi, thử lại sau
+    if (cur && Object.keys(patch).every(k => k !== 'updated_at') ) {
+      const { data: now } = await supabase.from('batches').select(Object.keys(patch).join(',') + ',updated_at').eq('id', id).maybeSingle();
+      // Lần gửi trước đã ghi nhưng mất trả lời: máy chủ đã đúng như mình muốn, coi như xong.
+      if (now && Object.entries(patch).every(([k, v]) => String((now as any)[k] ?? null) === String(v ?? null))) { await remember(id, (now as any).updated_at); return { error: null }; }
+    }
     if (cur) return { error: { app: true, message: `Người khác đã sửa lô này lúc ${hm(cur.updated_at)} nên thay đổi của bạn chưa ghi. Mở lô xem lại, cần thì làm lại` } };
   }
   return { error: { app: true, message: 'Lô không còn trên máy chủ hoặc không có quyền sửa' } };
 }
 // Cộng dồn số lượng ngay trên máy chủ (qty = qty + n): hai người cùng cộng không mất phần của nhau.
-async function incrOne(id: string, n: number) {
-  const { data, error } = await supabase.rpc('add_qty', { p_id: id, p_n: n });
+async function incrOne(id: string, n: number, op: string) {
+  const { data, error } = await supabase.rpc('add_qty', { p_id: id, p_n: n, p_op: op });   // p_op: gửi lại không cộng hai lần
   if (error) return { error };
   const r = Array.isArray(data) ? data[0] : data;
   if (!r) return { error: { app: true, message: 'Lô không còn trên máy chủ hoặc không có quyền sửa' } };
@@ -191,6 +197,7 @@ async function incrOne(id: string, n: number) {
 
 // Đăng xuất: xóa hàng đợi + bản sao trên máy để người đăng nhập sau không gửi nhầm / xem nhầm.
 export async function clearLocal() {
+  mem = null; own = null; started = '';
   const db = await idb();
   await new Promise<void>((ok, fail) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').clear(); t.oncomplete = () => ok(); t.onerror = () => fail(t.error); });
 }
@@ -207,7 +214,7 @@ export function flush(): Promise<void> {
       const { error } =
         op.kind === 'insert' ? await supabase.from('batches').upsert(op.row, { onConflict: 'id', ignoreDuplicates: true })
         : op.kind === 'update' ? await updateOne(op.id, op.patch, op.base)
-        : op.kind === 'incr' ? await incrOne(op.id, op.n)
+        : op.kind === 'incr' ? await incrOne(op.id, op.n, op.opId)
         : await supabase.from('audit_log').insert(op.row);
       if (error && (isNet(error) || isAuth(error) || !final(error))) break;   // mất mạng / phiên hết hạn / máy chủ tạm lỗi: giữ lại, thử sau
       if (error) {                                                      // máy chủ từ chối: bỏ thao tác, báo cho người dùng
@@ -284,6 +291,10 @@ export async function startSync(store: string) {
   const [box, failed, syncedAt] = await Promise.all([get<Op[]>('outbox'), get<string[]>('failed'), get<number>('syncedAt')]);
   emit({ pending: (box ?? []).filter(o => o.kind !== 'audit').length, failed: failed ?? [], syncedAt: syncedAt ?? null });
   if (started === store) return;
+  // Máy vừa dùng tài khoản cửa hàng khác: bỏ dữ liệu cũ, không gửi nhầm hàng đợi của người trước.
+  const owner = await get<string>('owner');
+  if (owner && owner !== store) { await clearLocal(); emit({ pending: 0, failed: [], syncedAt: null }); }
+  await put('owner', store);
   started = store;
   navigator.storage?.persist?.();
   const go = async () => {

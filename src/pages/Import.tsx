@@ -9,12 +9,12 @@ import { refreshSnapshot } from '../lib/offline.ts';
 
 const chunks = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 
-// Đọc sheet đầu, tự tìm dòng tiêu đề (file Cadencia có 3 dòng đầu không phải tiêu đề).
-export async function readRows(file: File, col: string | string[] = 'AX Code', what = 'GTB Cadencia'): Promise<Record<string, unknown>[]> {
+// Đọc sheet đầu (hoặc sheet tên `sheet` nếu có), tự tìm dòng tiêu đề (file Cadencia có 3 dòng đầu không phải tiêu đề).
+export async function readRows(file: File, col: string | string[] = 'AX Code', what = 'GTB Cadencia', sheet?: string): Promise<Record<string, unknown>[]> {
   const XLSX = await import('xlsx');
   const cols = [col].flat();
   const wb = XLSX.read(await file.arrayBuffer());
-  const aoa = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: null });
+  const aoa = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[(sheet && wb.SheetNames.find(n => n.trim().toUpperCase() === sheet)) || wb.SheetNames[0]], { header: 1, defval: null });
   const h = aoa.findIndex((r, i) => i < 20 && r.some(c => cols.includes(String(c ?? '').trim())));
   if (h < 0) throw new Error(`Không thấy cột ${cols.map(c => `"${c}"`).join(' hoặc ')} trong 20 dòng đầu. Có đúng file ${what} không?`);
   const head = aoa[h].map((c, i) => String(c ?? '').trim() || 'col' + i);   // cột không có tiêu đề: col6, col16…
@@ -24,10 +24,10 @@ export async function readRows(file: File, col: string | string[] = 'AX Code', w
 async function loadExisting(store: string): Promise<Existing[]> {
   const out: Existing[] = [];
   for (let i = 0; ; i += 1000) {
-    const { data, error } = await supabase.from('products').select('id,ax_code,name,price,active,category,vendors(code)')
+    const { data, error } = await supabase.from('products').select('id,ax_code,name,brand,price,active,category,vendors(code)')
       .eq('store_id', store).not('ax_code', 'is', null).is('deleted_at', null).order('ax_code').range(i, i + 999);
     if (error) throw error;
-    out.push(...data.map((p: any) => ({ id: p.id, ax: p.ax_code, name: p.name, price: p.price == null ? null : Number(p.price), vendorCode: p.vendors?.code ?? '', active: p.active, category: p.category, keep: p.category === 'Từ ExpiryDay' || p.category === 'Tạo trong app' })));
+    out.push(...data.map((p: any) => ({ id: p.id, ax: String(p.ax_code).trim().toUpperCase(), name: p.name, brand: p.brand ?? '', price: p.price == null ? null : Number(p.price), vendorCode: p.vendors?.code ?? '', active: p.active, category: p.category, keep: p.category === 'Từ ExpiryDay' || p.category === 'Tạo trong app' })));
     if (data.length < 1000) return out;
   }
 }
@@ -170,7 +170,7 @@ function ContactImport({ store }: { store: string }) {
     if (!f) return;
     setBusy(true); setMsg('Đang đọc file…'); setVt(null);
     try {
-      const rows = await readRows(f, 'VENDOR CODE', 'Contact List');
+      const rows = await readRows(f, 'VENDOR CODE', 'Contact List', 'DRY');
       setVt(resolveVendors(rows.map(r => ({ code: r['VENDOR CODE'], name: r['VENDOR NAME'], category: r['CATEGORY'], term: r['Đổi trả hàng'] }))));
       setMsg('');
     } catch (e: any) { setMsg('Lỗi: ' + e.message); }
