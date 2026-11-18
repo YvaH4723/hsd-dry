@@ -311,6 +311,7 @@ details.more > :not(summary) + * { margin-top: 10px; }
 .trow-name { font-size: 15.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .trow-meta { font-size: 13px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .trow-meta .mute { font-weight: 400; }
+.trow[aria-expanded="true"] .trow-name { white-space: normal; }
 .trow-qty { flex: none; font-size: 14px; font-weight: 650; color: var(--ink-2); }
 .trow-more { padding: 2px 14px 14px 33px; background: var(--surface-2); }
 .trow-more > * + * { margin-top: 8px; }

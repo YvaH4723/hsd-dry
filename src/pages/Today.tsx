@@ -3,7 +3,7 @@ import { canWrite, type Member } from '../supabase.ts';
 import { pname, useNames, useShelves, useTerms, useZones, zoneFilter } from '../lib/db.ts';
 import ZoneChips from '../components/ZoneChips.tsx';
 import LotSearchBar, { useLotSearch } from '../components/LotSearch.tsx';
-import { loadBatches, updateBatchOffline } from '../lib/offline.ts';
+import { loadBatches, updateBatchOffline, useSync } from '../lib/offline.ts';
 import { actionFor, type Action } from '../lib/action.ts';
 import { daysLeft, fmt, whoLine } from '../lib/dates.ts';
 import { LotsLoading, type LotRow } from '../components/Lot.tsx';
@@ -42,6 +42,8 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
 
   const load = () => loadBatches(store, {}).then(d => { setErr(''); setLots(d); }, (e: Error) => setErr(e.message));
   useEffect(() => { load(); }, [store, rev]);
+  const { failed } = useSync();
+  useEffect(() => { if (failed.length) load(); }, [failed.length]);   // máy chủ từ chối thay đổi gửi sau: tải lại cho màn đúng thật
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(null), 6000); return () => clearTimeout(t); } }, [toast]);
   useEffect(() => { try { localStorage.setItem(BY_KEY, by); } catch { /* */ } }, [by]);
   useEffect(() => setOpen(null), [by, tile, search.active]);
@@ -83,7 +85,7 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
     { key: 'disc', title: 'Cần dán giảm giá', tone: 'disc', tile: 'disc',
       items: open0.filter(x => x.a.kind === 'discount' && left(x) <= SOON).sort(byDate).map(mk('disc', () => [['discounted', 'Đã dán giảm giá', true], SOLD], x => `Dán giảm giá từ ${fmt(x.a.date)} · ${when(left(x))}`)) },
     { key: 'pick', title: 'Đã báo trả, chờ NCC lấy', tone: 'pick', tile: 'pick',
-      items: base.filter(x => x.l.status === 'return_notified').sort(byDate).map(mk('pick', () => [['returned', 'NCC đã lấy', true], ['on_shelf', 'Hoàn tác']], x => `Đã báo trả · HSD ${fmt(x.l.expiry_date)}`)) },
+      items: base.filter(x => x.l.status === 'return_notified').sort(byDate).map(mk('pick', () => [['returned', 'NCC đã lấy', true], ['on_shelf', 'Hoàn tác']], x => `Đã báo trả · ${x.l.expiry_note === 'action_date' ? 'chưa có HSD' : 'HSD ' + fmt(x.l.expiry_date)}`)) },
   ];
   // Chưa rõ điều khoản mà HSD đã gần: có thể NCC cho trả hàng sớm hơn mốc giảm giá 45 ngày, cần đặt điều khoản ngay.
   const shownIds = new Set(groups.flatMap(g => g.items.map(x => x.l.id)));
@@ -93,7 +95,7 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
     note: 'App đang tạm tính dán giảm giá trước HSD 45 ngày. Nếu NCC cho trả hàng, quản trị viên đặt điều khoản (mở sản phẩm hoặc Khác → Điều khoản) để không lỡ hạn báo trả.' });
 
   const found = groups.map(g => ({ ...g, items: g.items.filter(x => search.match(x.l)) }));
-  const count = (t: Tile) => found.filter(g => g.tile === t).reduce((n, g) => n + g.items.length, 0);
+  const count = (t: Tile) => found.filter(g => g.tile === t && g.key !== 'unclear').reduce((n, g) => n + g.items.length, 0);
   const total = found.reduce((n, g) => n + g.items.length, 0);
   const picked = found.filter(g => g.items.length && (!tile || g.tile === tile));
 

@@ -12,6 +12,7 @@ export function AskHost() {
   useEffect(() => { show = setQ; return () => { show = null; }; }, []);
   useEffect(() => {
     if (!q) return;
+    (document.activeElement as HTMLElement | null)?.blur?.();   // ẩn bàn phím đang mở
     okRef.current?.focus();
     const key = (e: KeyboardEvent) => e.key === 'Escape' && close(false);
     addEventListener('keydown', key);

@@ -64,7 +64,7 @@ export default function Scanner({ onCode, auto = false }: { onCode: (code: strin
       setTimeout(() => {
         if (stream.current === cur && !v.videoWidth) { v.play().catch(() => {}); setMsg('Camera chưa lên hình? Bấm Tắt camera rồi Bật lại, hoặc dùng Chụp ảnh.'); }
       }, 2500);
-      s.getVideoTracks()[0].addEventListener('ended', () => { stop(); setMsg('Camera bị ngắt. Bấm Bật camera lại.'); });
+      s.getVideoTracks()[0].addEventListener('ended', () => { want.current = false; stop(); setMsg('Camera bị ngắt. Bấm Bật camera lại.'); });
       const loop = async () => {
         if (stream.current !== cur) return;
         if (v.readyState >= 2) {

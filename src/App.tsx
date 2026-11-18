@@ -52,12 +52,13 @@ export default function App() {
       if (s.adding) { setAdding(null); setRev(r => r + 1); }
       else if (s.sub) setSub(null);
       else if (s.tab !== 'today') setTab('today');
-      else { removeEventListener('popstate', pop); history.back(); return; }
+      else { history.back(); return; }                     // giữ listener: quay lại app (bfcache) vẫn chạy đúng
       history.pushState({ a: 1 }, '');
       scrollTo(0, 0);
     };
-    addEventListener('popstate', pop);
-    return () => removeEventListener('popstate', pop);
+    const show = (e: PageTransitionEvent) => { if (e.persisted) history.pushState({ a: 1 }, ''); };
+    addEventListener('popstate', pop); addEventListener('pageshow', show);
+    return () => { removeEventListener('popstate', pop); removeEventListener('pageshow', show); };
   }, []);
 
   useEffect(() => { const t = setTimeout(() => setSlow(true), 5000); return () => clearTimeout(t); }, []);
