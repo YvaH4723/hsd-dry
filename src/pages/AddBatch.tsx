@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
-import { codeVariants, findByCode, pname, PRODUCT_COLS, searchProducts, useShelves, useTerms, type Product } from '../lib/db.ts';
+import { codeVariants, findByCode, pname, PRODUCT_COLS, searchProducts, useNames, useShelves, useTerms, type Product } from '../lib/db.ts';
 import { actionFor } from '../lib/action.ts';
 import { addBatchOffline, incrBatchOffline, isNet, loadBatches } from '../lib/offline.ts';
-import { daysLeft, fmt } from '../lib/dates.ts';
+import { daysLeft, fmt, whoLine } from '../lib/dates.ts';
 import ProductInfo, { ProductRow } from '../components/ProductInfo.tsx';
 import ActionLine from '../components/ActionLine.tsx';
 import Scanner from '../components/Scanner.tsx';
@@ -21,6 +21,7 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
   const store = member.store_id;
   const { shelves } = useShelves(store);
   const terms = useTerms(store);
+  const names = useNames();
   const [product, setProduct] = useState<Product | null>(initial ?? null);
   const [existing, setExisting] = useState<LotRow[] | null>(null);
   const [shelf, setShelf] = useState(() => { try { return localStorage.getItem(LAST_SHELF) ?? ''; } catch { return ''; } });
@@ -155,7 +156,7 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
               <div className="exist">
                 <span className="note">Đang có {existing.length} lô:</span>
                 {existing.slice(0, 6).map(l => (
-                  <span className="pill num" key={l.id}>{l.expiry_note === 'action_date' ? 'chưa có HSD' : fmt(l.expiry_date)} · SL {l.qty}{l.shelves ? ' · ' + l.shelves.name : ''}</span>
+                  <span className="pill num" key={l.id}>{l.expiry_note === 'action_date' ? 'chưa có HSD' : fmt(l.expiry_date)} · SL {l.qty}{l.shelves ? ' · ' + l.shelves.name : ''}{whoLine(l, names) && ' · ' + whoLine(l, names)}</span>
                 ))}
               </div>
             )}

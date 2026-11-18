@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseTerm, resolveVendors } from '../src/lib/terms.ts';
 import { barcodesOf, diffCatalog, mapRow, unaccent } from '../src/lib/cadencia.ts';
-import { addShelfLife, daysLeft, parseDmy } from '../src/lib/dates.ts';
+import { addShelfLife, daysLeft, parseDmy, whoLine } from '../src/lib/dates.ts';
 import { actionFor, indexTerms } from '../src/lib/action.ts';
 import { applyOutbox, type Op } from '../src/lib/offline.ts';
 
@@ -96,6 +96,14 @@ assert.equal(daysLeft('2026-11-20', new Date(2026, 10, 15, 23, 59)), 5);
 }
 // Cộng dồn khi mất mạng hiện ngay trên màn.
 assert.equal(applyOutbox([{ id: 'x', qty: 5, status: 'on_shelf', expiry_date: '2027-01-01' }], [{ opId: 'o', kind: 'incr', table: 'batches', id: 'x', n: 2 } as Op], {})[0].qty, 7);
+{ // ai thêm, ai sửa
+  const N = { a: 'Lan', b: 'Hùng' }, now = new Date(2026, 10, 18);
+  assert.equal(whoLine({ created_by: 'a', created_at: '2026-11-18T01:00:00Z' }, N, now), 'Lan thêm 18/11');
+  assert.equal(whoLine({ created_by: 'a', created_at: '2026-11-18T01:00:00Z', updated_by: 'b', updated_at: '2026-11-19T01:00:00Z' }, N, now), 'Lan thêm 18/11 · Hùng sửa 19/11');
+  assert.equal(whoLine({ created_by: 'a', created_at: '2025-12-30T01:00:00Z', updated_by: 'a', updated_at: '2026-11-19T01:00:00Z' }, N, now), 'Lan thêm 30/12/2025 · sửa 19/11');
+  assert.equal(whoLine({ created_by: 'x', created_at: '2026-11-18T01:00:00Z' }, N, now), 'người cũ thêm 18/11');
+  assert.equal(whoLine({ created_by: null }, N, now), '');
+}
 console.log('Quy tắc: OK');
 
 const [cadPath, conPath] = process.argv.slice(2);

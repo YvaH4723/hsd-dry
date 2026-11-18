@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { canWrite, type Member } from '../supabase.ts';
-import { pname, useShelves, useTerms, useZones, zoneFilter } from '../lib/db.ts';
+import { pname, useNames, useShelves, useTerms, useZones, zoneFilter } from '../lib/db.ts';
 import ZoneChips from '../components/ZoneChips.tsx';
 import LotSearchBar, { useLotSearch } from '../components/LotSearch.tsx';
 import { loadBatches, updateBatchOffline } from '../lib/offline.ts';
 import { actionFor, type Action } from '../lib/action.ts';
-import { daysLeft, fmt } from '../lib/dates.ts';
+import { daysLeft, fmt, whoLine } from '../lib/dates.ts';
 import { LotsLoading, type LotRow } from '../components/Lot.tsx';
 import Icon from '../components/Icon.tsx';
 
@@ -191,7 +191,7 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
 
 function TodayRow({ x, by, open, write, onToggle, onMark }: { x: Item; by: By; open: boolean; write: boolean; onToggle: () => void; onMark: (s: string) => void }) {
   const p = x.l.products, shelf = x.l.shelves?.name ?? 'Chưa gắn kệ', vendor = p.vendors?.name || p.vendors?.code;
-  const where = by === 'ke' ? (vendor ?? '') : shelf;
+  const where = by === 'ke' ? (vendor ?? '') : shelf, who = whoLine(x.l, useNames());
   return (
     <div className="li">
       <button className="trow" aria-expanded={open} onClick={onToggle}>
@@ -211,6 +211,7 @@ function TodayRow({ x, by, open, write, onToggle, onMark }: { x: Item; by: By; o
             {vendor && <span>{vendor}</span>}
             {p.ax_code && <span className="num mute">{p.ax_code}</span>}
           </p>
+          {who && <p className="note">{who}</p>}
           {x.a.label && x.a.kind !== 'reminder' && <p className="note warn">{x.a.label}{x.a.raw ? ': ' + x.a.raw.replace(/\n/g, ' / ') : ''}</p>}
           {write && (
             <div className="actions">

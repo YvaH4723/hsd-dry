@@ -46,7 +46,7 @@ export async function fetchAll<T>(page: (from: number, to: number) => PromiseLik
   }
 }
 
-export const BATCH_COLS = 'id,qty,expiry_date,expiry_note,status,shelf_id,updated_at,shelves(name),products(id,name,name_vi,ax_code,brand,vendor_id,no_return,sanh_dieu,vendors(code,name))';
+export const BATCH_COLS = 'id,qty,expiry_date,expiry_note,status,shelf_id,updated_at,created_at,created_by,updated_by,shelves(name),products(id,name,name_vi,ax_code,brand,vendor_id,no_return,sanh_dieu,vendors(code,name))';
 const SNAP_PRODUCT_COLS = 'id,ax_code,name,name_vi,name_search,brand,price,active,category,vendor_id,no_return,sanh_dieu,vendors(code,name),barcodes(code)';
 const ACTIVE = ['on_shelf', 'discounted', 'return_notified'];
 
@@ -225,7 +225,7 @@ const auditOp = (store: string, batch_id: string, action: string, before: unknow
   ({ opId: uid(), kind: 'audit', row: { store_id: store, batch_id, action, before, after, at: new Date().toISOString() } });
 
 export function addBatchOffline(store: string, row: Record<string, unknown>, view: any) {
-  const id = uid(), full = { ...row, id, store_id: store };
+  const id = uid(), full = { ...row, id, store_id: store, created_at: new Date().toISOString() };   // thêm lúc mất mạng vẫn đúng ngày thêm
   return enqueue({ opId: uid(), kind: 'insert', table: 'batches', row: full, view: { ...view, id } }, auditOp(store, id, 'add', null, full));
 }
 export function updateBatchOffline(store: string, id: string, patch: Record<string, unknown>, action: string, before: unknown, view?: Record<string, unknown>, base?: string) {

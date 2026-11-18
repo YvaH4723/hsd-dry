@@ -25,3 +25,13 @@ export const daysLeft = (exp: string, today = new Date()) =>
   Math.round((fromIso(exp).getTime() - fromIso(iso(today)).getTime()) / 86400000);
 
 export const fmt = (s: string) => { const [y, m, d] = s.split('-'); return `${d}/${m}/${y}`; };
+
+// "Lan thêm 18/11 · Hùng sửa 19/11" (cùng người: "Lan thêm 18/11 · sửa 19/11"). Khác năm nay thì ghi cả năm.
+// Người đã rời cửa hàng: "người cũ". Lô không rõ người thêm (chuyển từ ExpiryDay): bỏ phần "thêm".
+export function whoLine(l: { created_by?: string | null; created_at?: string; updated_by?: string | null; updated_at?: string },
+  names: Record<string, string>, now = new Date()): string {
+  const who = (id?: string | null) => id ? names[id] ?? 'người cũ' : '';
+  const day = (s?: string) => { if (!s) return ''; const d = new Date(s), t = fmt(iso(d)); return d.getFullYear() === now.getFullYear() ? t.slice(0, 5) : t; };
+  const add = who(l.created_by), edit = who(l.updated_by);
+  return [add && `${add} thêm ${day(l.created_at)}`, edit && `${edit === add ? '' : edit + ' '}sửa ${day(l.updated_at)}`].filter(Boolean).join(' · ');
+}

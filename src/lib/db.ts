@@ -100,6 +100,26 @@ export function zoneFilter(value: string, mine: string[], shelves: Shelf[]) {
   return (l: { shelf_id?: string | null }) => { const z = l.shelf_id ? zoneOf.get(l.shelf_id) ?? null : null; return z ? set.has(z) : value === 'mine'; };
 }
 
+// Tên thành viên theo user_id (hiện "ai thêm, ai sửa" ở lô). Tải một lần, lưu trên máy để mất mạng vẫn hiện.
+// RLS chỉ cho đọc thành viên cùng cửa hàng nên không cần lọc store.
+const NAMES = 'hsd.names';
+let names: Record<string, string> = (() => { try { return JSON.parse(localStorage.getItem(NAMES) ?? '{}'); } catch { return {}; } })();
+let namesP: PromiseLike<unknown> | null = null;
+export function useNames() {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const p = namesP ??= supabase.from('members').select('user_id,name').then(({ data }) => {
+      if (!data) { namesP = null; return; }                     // mất mạng: dùng bản đã lưu, lần sau thử lại
+      names = Object.fromEntries(data.map(m => [m.user_id, m.name]));
+      try { localStorage.setItem(NAMES, JSON.stringify(names)); } catch { /* */ }
+    });
+    let live = true;
+    p.then(() => live && bump(n => n + 1));
+    return () => { live = false; };
+  }, []);
+  return names;
+}
+
 export const money = (n: number | null) => n == null ? '' : Number(n).toLocaleString('vi-VN') + 'đ';
 
 // Điều khoản + cài đặt của cửa hàng (mốc giảm giá, số ngày báo trả sớm cho an toàn).
