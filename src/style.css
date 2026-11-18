@@ -277,9 +277,10 @@ details.more > :not(summary) + * { margin-top: 10px; }
   button, nav.tabs > button.add .disc, details.more > summary::after { transition: none; }
 }
 
-/* iPhone: khi bàn phím mở, thanh dưới (position: fixed) bị kéo trôi theo trang. Đang gõ thì ẩn thanh dưới. */
+/* iPhone: khi bàn phím mở, thanh dưới (position: fixed) bị kéo trôi theo trang. Đang gõ thì ẩn thanh dưới, nút lưu về chỗ cũ trong trang (không nổi đè lên ô đang gõ). */
 @media (pointer: coarse) {
   body:has(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):focus, textarea:focus) nav.tabs { display: none; }
+  body:has(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):focus, textarea:focus) .savebar { position: static; margin-top: 12px; }
 }
 
 /* ---------- Hôm nay: ô đếm, nhóm gập/mở, dòng lô gọn ---------- */
