@@ -124,7 +124,15 @@ export async function localByVendor(vendorId: string): Promise<Product[]> {
 export async function localNoCode(): Promise<Product[]> {
   const { products } = await local();
   if (!products.length) throw new Error(NO_SNAPSHOT);
-  return products.filter(p => !p.barcodes?.length && (p.active || p.category === 'TB 14.04'));
+  return products.filter(p => !p.barcodes?.length && (p.active || /^TB\b/.test(p.category ?? '')));
+}
+// Vừa gắn mã có mạng: ghi luôn vào bản lưu trên máy để quét lúc mất mạng / Chưa có mã vạch thấy ngay, khỏi chờ tải lại.
+export async function localAddCodes(id: string, codes: string[]) {
+  const products = (await get<Product[]>('products')) ?? [];
+  const p = products.find(x => x.id === id);
+  if (!p) return;
+  p.barcodes = [...(p.barcodes ?? []), ...codes.map(code => ({ code }))];
+  await put('products', products); mem = null;
 }
 export const localTerms = async () => ({ terms: (await get<Term[]>('terms')) ?? [], store: await get<any>('store') });
 export const localShelves = async () => (await get<Shelf[]>('shelves')) ?? [];
@@ -165,7 +173,8 @@ async function updateOne(id: string, patch: Record<string, unknown>, base?: stri
   if (error) return { error };
   if (data?.length) { await remember(id, data[0].updated_at); return { error: null }; }
   if (base) {                                                           // 0 dòng: lô bị người khác sửa trước, hay đã mất?
-    const { data: cur } = await supabase.from('batches').select('updated_at').eq('id', id).maybeSingle();
+    const { data: cur, error: e2 } = await supabase.from('batches').select('updated_at').eq('id', id).maybeSingle();
+    if (e2) return { error: e2 };                                       // rớt mạng giữa chừng: giữ trong hàng đợi, thử lại sau
     if (cur) return { error: { app: true, message: `Người khác đã sửa lô này lúc ${hm(cur.updated_at)} nên thay đổi của bạn chưa ghi. Mở lô xem lại, cần thì làm lại` } };
   }
   return { error: { app: true, message: 'Lô không còn trên máy chủ hoặc không có quyền sửa' } };

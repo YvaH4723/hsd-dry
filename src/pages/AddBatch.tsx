@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
 import { codeVariants, findByCode, pname, PRODUCT_COLS, searchProducts, useNames, useShelves, useTerms, type Product } from '../lib/db.ts';
 import { actionFor } from '../lib/action.ts';
-import { addBatchOffline, incrBatchOffline, isNet, loadBatches } from '../lib/offline.ts';
+import { localAddCodes, addBatchOffline, incrBatchOffline, isNet, loadBatches } from '../lib/offline.ts';
 import { daysLeft, fmt, whoLine } from '../lib/dates.ts';
 import ProductInfo, { ProductRow } from '../components/ProductInfo.tsx';
 import ActionLine from '../components/ActionLine.tsx';
@@ -88,6 +88,7 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
         const { data: o } = await supabase.from('barcodes').select('deleted_at,products(name)').eq('store_id', store).in('code', rows.map(r => r.code)).limit(1).maybeSingle();
         return setMsg({ text: `Không gắn được: mã ${code} đã thuộc "${(o as any)?.products?.name ?? 'sản phẩm khác'}"${(o as any)?.deleted_at ? ' (đã xóa)' : ''}.`, tone: 'bad' });
       }
+      localAddCodes(p.id, data.map(d => d.code as string)).catch(() => {});
       choose({ ...p, barcodes: [...(p.barcodes ?? []), ...data.map(d => ({ code: d.code as string }))] });
       setMsg({ text: `Đã gắn mã ${code} cho sản phẩm này. Lần sau quét là ra.`, tone: 'ok' });
     } finally { setBusy(false); }
@@ -95,6 +96,7 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
 
   const n = Math.max(1, parseInt(qty) || 1);
   const sh = shelves.find(s => s.id === shelf);
+  useEffect(() => { if (shelf && shelves.length && !sh) setShelf(''); }, [shelves, shelf]);   // kệ đã lưu không còn (bị xóa / tài khoản khác)
   const same = existing?.find(l => l.expiry_note !== 'action_date' && l.expiry_date === date.exp);
   const canMerge = same && (same.shelf_id ?? '') === shelf;
 

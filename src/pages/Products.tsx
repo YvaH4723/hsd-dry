@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { supabase, canWrite, type Member } from '../supabase.ts';
-import { findByCode, listVendors, searchByCode, searchProducts, useTerms, vendorProducts, type Product, type Vendor } from '../lib/db.ts';
+import { findByCode, pname, listVendors, searchByCode, searchProducts, useTerms, vendorProducts, type Product, type Vendor } from '../lib/db.ts';
 import { unaccent } from '../lib/cadencia.ts';
 import ProductInfo, { ProductRow } from '../components/ProductInfo.tsx';
 import BatchList from '../components/BatchList.tsx';
@@ -25,6 +25,9 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
   const [nocode, setNocode] = useState(false);
   const [scan, setScan] = useState(false);
   const [scanMsg, setScanMsg] = useState('');
+  const scanOn = useRef(false); scanOn.current = scan;
+  const [ncTb, setNcTb] = useState(false);
+  const [ncQ, setNcQ] = useState('');
   const [all, setAll] = useState<Product[] | null>(null);       // toàn bộ sản phẩm của NCC đang chọn
   const terms = useTerms(store);
 
@@ -55,7 +58,7 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
     return () => { live = false; clearTimeout(t); };
   }, [q, store, vendor?.id]);
 
-  if (nocode && !open) return <NoCode back={() => setNocode(false)} openP={p => { setOpen(p); scrollTo(0, 0); }} />;
+  if (nocode && !open) return <NoCode tb={ncTb} setTb={setNcTb} q={ncQ} setQ={setNcQ} back={() => setNocode(false)} openP={p => { setOpen(p); scrollTo(0, 0); }} />;
   if (picking) return <VendorPicker store={store} pick={v => { setVendor(v); setPicking(false); scrollTo(0, 0); }} back={() => setPicking(false)} />;
 
   if (open) return (
@@ -74,6 +77,7 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
     setScanMsg('Đang tìm ' + code + '…');
     try {
       const p = await findByCode(store, code);
+      if (!scanOn.current) return;                 // đã bấm Đóng quét trong lúc tìm
       if (p) { setScan(false); setScanMsg(''); setOpen(p); scrollTo(0, 0); }
       else setScanMsg(`Chưa có mã ${code} trong danh mục. Quét món khác, hoặc gắn mã ở Chưa có mã vạch.`);
     } catch (e) { setScanMsg((e as Error).message); }
@@ -93,7 +97,7 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
       </div>
       {scan ? (
         <>
-          <Scanner onCode={onScan} />
+          <Scanner auto onCode={onScan} />
           {scanMsg && <p className="note" role="status">{scanMsg}</p>}
           <button className="block" onClick={() => { setScan(false); setScanMsg(''); }}><Icon name="x" size={18} />Đóng quét</button>
         </>
@@ -161,16 +165,15 @@ function VendorPicker({ store, pick, back }: { store: string; pick: (v: Vendor) 
 }
 
 // Sản phẩm chưa có mã vạch: đi kệ tìm hàng, mở sản phẩm, bấm "Quét mã vạch để gắn". Xếp theo nhóm hàng cho dễ đi theo kệ.
-function NoCode({ back, openP }: { back: () => void; openP: (p: Product) => void }) {
+// tb, q giữ ở trang cha: mở sản phẩm rồi Quay lại vẫn đúng tab và chữ đang lọc.
+function NoCode({ back, openP, tb, setTb, q, setQ }: { back: () => void; openP: (p: Product) => void; tb: boolean; setTb: (v: boolean) => void; q: string; setQ: (v: string) => void }) {
   const [ps, setPs] = useState<Product[] | null>(null);
   const [err, setErr] = useState('');
-  const [tb, setTb] = useState(false);
-  const [q, setQ] = useState('');
   useEffect(() => { localNoCode().then(d => setPs(d.filter(p => !attached.has(p.id))), (e: Error) => setErr(e.message)); }, []);
   const s = unaccent(q.trim());
   const sel = (ps ?? []).filter(p => p.active !== tb && (!s || unaccent(`${p.name} ${p.name_vi ?? ''} ${p.ax_code ?? ''} ${p.vendors?.name ?? ''} ${p.category ?? ''}`).includes(s)));
   const groups = new Map<string, Product[]>();
-  for (const p of sel.sort((a, b) => a.name.localeCompare(b.name))) {
+  for (const p of sel.sort((a, b) => pname(a).localeCompare(pname(b), 'vi'))) {
     const k = tb ? (p.vendors?.name ?? 'Chưa có NCC') : (p.category ?? 'Khác');
     groups.set(k, [...(groups.get(k) ?? []), p]);
   }

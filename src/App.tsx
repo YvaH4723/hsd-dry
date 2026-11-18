@@ -138,7 +138,7 @@ export default function App() {
 async function logout(pending: number) {
   if (!await ask(pending ? { title: `Còn ${pending} thay đổi chưa gửi`, body: 'Đăng xuất bây giờ thì các thay đổi này bị bỏ. Nên đợi có mạng cho gửi xong rồi mới đăng xuất.', ok: 'Vẫn đăng xuất', danger: true }
     : { title: 'Đăng xuất khỏi máy này?', body: 'Dữ liệu lưu trên máy sẽ được xóa. Đăng nhập lại để dùng tiếp.', ok: 'Đăng xuất' })) return;
-  try { localStorage.removeItem(MEMBER_KEY); localStorage.removeItem('hsd.zones'); localStorage.removeItem('hsd.names'); } catch { /* */ }
+  try { localStorage.removeItem(MEMBER_KEY); localStorage.removeItem('hsd.zones'); localStorage.removeItem('hsd.names'); localStorage.removeItem('hsd.lastShelf'); } catch { /* */ }
   try {                                                                 // gỡ thông báo của tài khoản này trên máy, người sau tự bật lại
     const sub = await (await navigator.serviceWorker?.getRegistration())?.pushManager.getSubscription();
     if (sub) { await supabase.from('push_subs').delete().eq('endpoint', sub.endpoint); await sub.unsubscribe(); }

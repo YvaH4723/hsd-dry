@@ -104,10 +104,11 @@ export function zoneFilter(value: string, mine: string[], shelves: Shelf[]) {
 // RLS chỉ cho đọc thành viên cùng cửa hàng nên không cần lọc store.
 const NAMES = 'hsd.names';
 let names: Record<string, string> = (() => { try { return JSON.parse(localStorage.getItem(NAMES) ?? '{}'); } catch { return {}; } })();
-let namesP: PromiseLike<unknown> | null = null;
+let namesP: PromiseLike<unknown> | null = null, namesAt = 0;
 export function useNames() {
   const [, bump] = useState(0);
   useEffect(() => {
+    if (Date.now() - namesAt > 300_000) { namesP = null; namesAt = Date.now(); }   // tải lại sau 5 phút: thành viên mới duyệt cũng có tên
     const p = namesP ??= supabase.from('members').select('user_id,name').then(({ data }) => {
       if (!data) { namesP = null; return; }                     // mất mạng: dùng bản đã lưu, lần sau thử lại
       names = Object.fromEntries(data.map(m => [m.user_id, m.name]));

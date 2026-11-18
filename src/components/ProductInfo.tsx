@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
 import { money, pname, type Product } from '../lib/db.ts';
+import { localAddCodes } from '../lib/offline.ts';
 import { codeVariants, isNet } from '../lib/offline.ts';
 import { canWrite } from '../supabase.ts';
 import Scanner from './Scanner.tsx';
@@ -49,13 +50,15 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
   // Quét mã trên bao bì để gắn vào sản phẩm này.
   async function attach(code: string) {
     setScan(false); setOk(''); setErr('');
+    if (!/^\d{6,14}$/.test(code)) return setErr(`"${code}" không phải mã vạch sản phẩm (chỉ gồm 6–14 chữ số). Quét lại mã trên bao bì.`);
     const rows = (/^\d{11,12}$/.test(code) ? codeVariants(code) : [code]).map(c => ({ store_id: member.store_id, product_id: p.id, code: c }));
     const { data, error } = await supabase.from('barcodes').upsert(rows, { onConflict: 'store_id,code', ignoreDuplicates: true }).select('code');
     if (error) return setErr(isNet(error) ? 'Đang mất mạng: gắn mã cần có mạng.' : 'Lỗi gắn mã: ' + error.message);
     if (!data?.length) {
-      const { data: o } = await supabase.from('barcodes').select('products(name)').eq('store_id', member.store_id).in('code', rows.map(r => r.code)).limit(1).maybeSingle();
-      return setErr(`Không gắn được: mã ${code} đang thuộc "${(o as any)?.products?.name ?? 'sản phẩm khác'}".`);
+      const { data: o } = await supabase.from('barcodes').select('deleted_at,products(name)').eq('store_id', member.store_id).in('code', rows.map(r => r.code)).limit(1).maybeSingle();
+      return setErr(`Không gắn được: mã ${code} đang thuộc "${(o as any)?.products?.name ?? 'sản phẩm khác'}"${(o as any)?.deleted_at ? ' (đã xóa)' : ''}.`);
     }
+    localAddCodes(p.id, data.map(d => d.code as string)).catch(() => {});
     setOk(`Đã gắn mã ${code}. Lần sau quét là ra sản phẩm này.`);
     onChange?.({ ...p, barcodes: [...(p.barcodes ?? []), ...data.map(d => ({ code: d.code as string }))] });
   }

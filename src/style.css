@@ -235,6 +235,7 @@ details.more > summary::after { content: ""; width: 7px; height: 7px; margin-lef
 details.more[open] > summary::after { transform: translateY(2px) rotate(-135deg); }
 details.more > :not(summary) + * { margin-top: 10px; }
 .exist { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.exist .pill { white-space: normal; max-width: 100%; }
 
 /* ---------- thêm lô ---------- */
 .scanner .viewport { position: relative; border-radius: var(--r-sm); overflow: hidden; background: #000; }
