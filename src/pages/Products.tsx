@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { supabase, canWrite, type Member } from '../supabase.ts';
-import { listVendors, searchByCode, searchProducts, useTerms, vendorProducts, type Product, type Vendor } from '../lib/db.ts';
+import { findByCode, listVendors, searchByCode, searchProducts, useTerms, vendorProducts, type Product, type Vendor } from '../lib/db.ts';
 import { unaccent } from '../lib/cadencia.ts';
 import ProductInfo, { ProductRow } from '../components/ProductInfo.tsx';
 import BatchList from '../components/BatchList.tsx';
 import Icon from '../components/Icon.tsx';
+import Scanner from '../components/Scanner.tsx';
 import { LotsLoading } from '../components/Lot.tsx';
 import { localNoCode } from '../lib/offline.ts';
 
@@ -22,6 +23,8 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
   const [vendor, setVendor] = useState<Vendor | null>(null);
   const [picking, setPicking] = useState(false);
   const [nocode, setNocode] = useState(false);
+  const [scan, setScan] = useState(false);
+  const [scanMsg, setScanMsg] = useState('');
   const [all, setAll] = useState<Product[] | null>(null);       // toàn bộ sản phẩm của NCC đang chọn
   const terms = useTerms(store);
 
@@ -67,6 +70,15 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
     </>
   );
 
+  async function onScan(code: string) {
+    setScanMsg('Đang tìm ' + code + '…');
+    try {
+      const p = await findByCode(store, code);
+      if (p) { setScan(false); setScanMsg(''); setOpen(p); scrollTo(0, 0); }
+      else setScanMsg(`Chưa có mã ${code} trong danh mục. Quét món khác, hoặc gắn mã ở Chưa có mã vạch.`);
+    } catch (e) { setScanMsg((e as Error).message); }
+  }
+
   const list = (ps: Product[]) => (
     <>
       <div className="list">{ps.slice(0, SHOW).map(r => <ProductRow key={r.id} p={r} onClick={() => { setOpen(r); scrollTo(0, 0); }} />)}</div>
@@ -79,6 +91,13 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
       <div className="search"><Icon name="search" size={18} />
         <input type="search" enterKeyHint="search" aria-label="Tìm sản phẩm" placeholder={vendor ? 'Tìm trong NCC này' : 'Tên, mã AX hoặc mã vạch'} value={q} onChange={e => setQ(e.target.value)} />
       </div>
+      {scan ? (
+        <>
+          <Scanner onCode={onScan} />
+          {scanMsg && <p className="note" role="status">{scanMsg}</p>}
+          <button className="block" onClick={() => { setScan(false); setScanMsg(''); }}><Icon name="x" size={18} />Đóng quét</button>
+        </>
+      ) : <button className="block" onClick={() => setScan(true)}><Icon name="camera" size={18} />Quét mã vạch để tìm</button>}
       {vendor ? (
         <div className="panel row" style={{ padding: '8px 6px 8px 14px' }}>
           <Icon name="truck" size={20} />
