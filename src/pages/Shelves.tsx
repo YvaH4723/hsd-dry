@@ -57,6 +57,13 @@ export default function Shelves({ member, rev }: { member: Member; rev?: number 
   if (cur) return <ShelfDetail shelf={cur} member={member} zones={zones} lots={counts?.[cur.id]?.n ?? 0} rev={rev} back={() => setOpen(null)} changed={() => { reload(); }} />;
   return (
     <>
+      {canWrite(member) && (
+        <form className="row" onSubmit={e => { e.preventDefault(); add(); }}>
+          <input className="grow" aria-label="Tên kệ mới" placeholder="Tên kệ mới" value={name} onChange={e => setName(e.target.value)} />
+          <button type="submit" disabled={!name.trim()}><Icon name="plus" size={18} />Thêm kệ</button>
+        </form>
+      )}
+      {err && <p className="msg bad">{err}</p>}
       {shelves.length ? zoneGroups.map(g => (
         <section className="grp" key={g.id || 'none'}>
           {g.name && <div className="sec"><h2>{g.name}</h2><span className="cnt">{g.items.length} kệ</span></div>}
@@ -81,13 +88,6 @@ export default function Shelves({ member, rev }: { member: Member; rev?: number 
         </section>
       )) : <p className="note">Chưa có kệ nào. Thêm kệ bên dưới, ví dụ: Kệ baby, Kệ bimbim, Kệ bột.</p>}
       {(counts?.['']?.n ?? 0) > 0 && <p className="note">{counts!['']!.n} lô chưa gắn kệ{counts!['']!.todo ? `, ${counts!['']!.todo} cần xử lý` : ''}. Mở lô ở tab Hết hạn để chọn kệ.</p>}
-      {canWrite(member) && (
-        <form className="row" onSubmit={e => { e.preventDefault(); add(); }}>
-          <input className="grow" aria-label="Tên kệ mới" placeholder="Tên kệ mới" value={name} onChange={e => setName(e.target.value)} />
-          <button type="submit" disabled={!name.trim()}><Icon name="plus" size={18} />Thêm kệ</button>
-        </form>
-      )}
-      {err && <p className="msg bad">{err}</p>}
       {member.role === 'admin' && <Zones store={store} zones={zones} reload={reloadZones} />}
     </>
   );
@@ -166,6 +166,11 @@ function Zones({ store, zones, reload }: { store: string; zones: Zone[]; reload:
     <section className="grp">
       <div className="sec"><h2>Khu</h2><span className="cnt">{zones.length || ''}</span></div>
       <p className="note">Chia quầy thành khu, mở từng kệ để chọn khu, rồi vào Khác → Thành viên chọn khu cho từng người. Hôm nay và Hết hạn sẽ hiện mặc định việc của khu mình.</p>
+      <form className="row" onSubmit={e => { e.preventDefault(); add(); }}>
+        <input className="grow" aria-label="Tên khu mới" placeholder="Tên khu mới, ví dụ Bánh kẹo" value={name} onChange={e => setName(e.target.value)} />
+        <button type="submit" disabled={!name.trim()}><Icon name="plus" size={18} />Thêm khu</button>
+      </form>
+      {err && <p className="msg bad">{err}</p>}
       {zones.length > 0 && (
         <div className="list">
           {zones.map(z => (
@@ -176,11 +181,6 @@ function Zones({ store, zones, reload }: { store: string; zones: Zone[]; reload:
           ))}
         </div>
       )}
-      <form className="row" style={{ marginTop: 10 }} onSubmit={e => { e.preventDefault(); add(); }}>
-        <input className="grow" aria-label="Tên khu mới" placeholder="Tên khu mới, ví dụ Bánh kẹo" value={name} onChange={e => setName(e.target.value)} />
-        <button type="submit" disabled={!name.trim()}><Icon name="plus" size={18} />Thêm khu</button>
-      </form>
-      {err && <p className="msg bad">{err}</p>}
     </section>
   );
 }

@@ -74,10 +74,12 @@ export async function vendorProducts(store: string, vendorId: string): Promise<P
 
 export const audit = (store: string, batch_id: string, action: string, before: unknown, after: unknown) => { auditOffline(store, batch_id, action, before, after); };
 
+// Danh sách kệ, khu luôn xếp theo chữ cái tiếng Việt (không phân biệt hoa thường), số theo giá trị, cho dễ tìm.
+const byName = <T extends { name: string }>(a: T[]): T[] => [...a].sort((x, y) => x.name.localeCompare(y.name, 'vi', { sensitivity: 'base', numeric: true }));
 export function useShelves(store: string) {
   const [shelves, setShelves] = useState<Shelf[]>([]);
   const reload = () => supabase.from('shelves').select('*').eq('store_id', store).is('deleted_at', null)
-    .order('sort_order').order('name').then(async ({ data, error }) => setShelves(error && isNet(error) ? await localShelves() : (data as Shelf[]) ?? []));
+    .order('sort_order').order('name').then(async ({ data, error }) => setShelves(byName(error && isNet(error) ? await localShelves() : (data as Shelf[]) ?? [])));
   useEffect(() => { reload(); }, [store]);
   return { shelves, reload };
 }
@@ -86,9 +88,9 @@ export function useShelves(store: string) {
 export interface Zone { id: string; name: string }
 const ZONES = 'hsd.zones';
 export function useZones(store: string) {
-  const [zones, setZones] = useState<Zone[]>(() => { try { return JSON.parse(localStorage.getItem(ZONES) ?? '[]'); } catch { return []; } });
+  const [zones, setZones] = useState<Zone[]>(() => { try { return byName<Zone>(JSON.parse(localStorage.getItem(ZONES) ?? '[]')); } catch { return []; } });
   const reload = () => supabase.from('zones').select('id,name').eq('store_id', store).is('deleted_at', null).order('sort_order').order('name')
-    .then(({ data, error }) => { if (error) return; setZones(data as Zone[]); try { localStorage.setItem(ZONES, JSON.stringify(data)); } catch { /* */ } });
+    .then(({ data, error }) => { if (error) return; setZones(byName(data as Zone[])); try { localStorage.setItem(ZONES, JSON.stringify(data)); } catch { /* */ } });
   useEffect(() => { reload(); }, [store]);
   return { zones, reload };
 }
