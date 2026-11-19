@@ -16,6 +16,7 @@ export default function ActionLine({ a, status }: { a: Action; status: string })
         <Icon name={a.kind === 'return' ? 'truck' : a.kind === 'discount' ? 'tag' : 'bell'} size={15} />
         <span>{what} <b className="num">{fmt(a.date)}</b> · {when}</span>
       </span>
+      {a.why && <span className="note">{a.why}</span>}
       {a.label && a.kind !== 'reminder' && <span className="note warn">{a.label}{a.raw ? ': ' + a.raw.replace(/\n/g, ' / ') : ''}</span>}
     </>
   );

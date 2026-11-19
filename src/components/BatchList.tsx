@@ -130,22 +130,23 @@ function Editor({ b, member, shelves, done }: { b: LotRow; member: Member; shelv
   const [shelf, setShelf] = useState(b.shelf_id ?? '');
   const [date, setDate] = useState<DateVal>({ exp: noHsd ? null : b.expiry_date, mfg: null, empty: noHsd });
   const [checked, setChecked] = useState(false);
+  const [noRet, setNoRet] = useState(!!b.no_return);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const n = parseInt(qty) || 0;
   const exp = noHsd && date.empty ? b.expiry_date : date.exp;          // lô chưa có HSD: để trống thì giữ ngày nhắc
   const clearNote = noHsd ? !date.empty : b.expiry_note === 'estimated' && (checked || exp !== b.expiry_date);
-  const before = { qty: b.qty, shelf_id: b.shelf_id, expiry_date: b.expiry_date, expiry_note: b.expiry_note, status: b.status };
+  const before = { qty: b.qty, shelf_id: b.shelf_id, expiry_date: b.expiry_date, expiry_note: b.expiry_note, no_return: !!b.no_return, status: b.status };
 
   async function upd(patch: Record<string, unknown>, action: string) {
     setBusy(true);
     try {
-      const view = 'shelf_id' in patch ? { shelves: shelves.find(s => s.id === patch.shelf_id) ?? null } : undefined;
+      const view = { ...('shelf_id' in patch ? { shelves: shelves.find(s => s.id === patch.shelf_id) ?? null } : {}), ...('no_return' in patch ? { no_return: patch.no_return } : {}) };
       await updateBatchOffline(member.store_id, b.id, patch, action, before, view, b.updated_at);
       done();
     } catch (e: any) { setMsg('Chưa lưu được: ' + e.message); setBusy(false); }
   }
-  const save = () => upd({ qty: n, shelf_id: shelf || null, expiry_date: exp, ...(exp !== b.expiry_date ? { mfg_date: date.mfg } : {}), ...(clearNote ? { expiry_note: null } : {}) }, 'edit');
+  const save = () => upd({ qty: n, shelf_id: shelf || null, expiry_date: exp, ...(exp !== b.expiry_date ? { mfg_date: date.mfg } : {}), ...(clearNote ? { expiry_note: null } : {}), ...(noRet !== !!b.no_return ? { no_return: noRet } : {}) }, 'edit');
 
   return (
     <div className="li-edit">
@@ -168,6 +169,7 @@ function Editor({ b, member, shelves, done }: { b: LotRow; member: Member; shelv
       {b.expiry_note === 'estimated' && (
         <label className="check"><input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} />HSD này đúng với bao bì (bỏ chữ ước tính)</label>
       )}
+      <label className="check"><input type="checkbox" checked={noRet} onChange={e => setNoRet(e.target.checked)} />Lô này không đổi trả, chỉ dán giảm giá</label>
       <div className="actions">
         <button className="pri" disabled={busy || n < 1 || !exp} onClick={save}>Lưu</button>
         <button disabled={busy} onClick={() => upd({ status: 'sold_out' }, 'sold_out')}>Bán hết</button>

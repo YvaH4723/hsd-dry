@@ -61,6 +61,9 @@ assert.equal(daysLeft('2026-11-20', new Date(2026, 10, 15, 23, 59)), 5);
   assert.equal(actionFor(lot, P(null, 'p1', { vendor_id: null }), C5).label, 'Chưa có NCC');
   assert.equal(actionFor(lot, P('Twinings', 'p1', { no_return: true }), C5).kind, 'discount');               // cờ không đổi trả
   assert.equal(actionFor({ expiry_date: '2027-01-01', expiry_note: 'action_date' }, P('Twinings'), C5).date, '2027-01-01');
+  assert.equal(actionFor({ ...lot, no_return: true }, P('Twinings'), C5).kind, 'discount');                  // lô không đổi trả: chỉ giảm giá
+  assert.equal(actionFor({ ...lot, no_return: true }, P('Twinings'), C5).date, '2027-02-14');                 // HSD − 45, không cộng 5
+  assert.equal(actionFor({ ...lot, no_return: false }, P('Twinings'), C0).kind, 'return');                    // tắt: về điều khoản NCC
 }
 { // ghép dữ liệu máy chủ với thay đổi đang chờ gửi
   const rows = [{ id: 'a', expiry_date: '2027-02-01', status: 'on_shelf', shelf_id: 'k1', products: { id: 'p1' } },

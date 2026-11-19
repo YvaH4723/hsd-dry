@@ -28,6 +28,7 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
   const [qty, setQty] = useState('1');
   const [date, setDate] = useState<DateVal>(NO_DATE);
   const [dateKey, setDateKey] = useState(0);
+  const [noRet, setNoRet] = useState(false);          // riêng lô này không đổi trả: chỉ dán giảm giá
   const [msg, setMsg] = useState<Msg>(null);
   const [unknown, setUnknown] = useState('');
   const [q, setQ] = useState('');
@@ -97,11 +98,11 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
   const n = Math.max(1, parseInt(qty) || 1);
   const sh = shelves.find(s => s.id === shelf);
   useEffect(() => { if (shelf && shelves.length && !sh) setShelf(''); }, [shelves, shelf]);   // kệ đã lưu không còn (bị xóa / tài khoản khác)
-  const same = existing?.find(l => l.expiry_note !== 'action_date' && l.expiry_date === date.exp);
+  const same = existing?.find(l => l.expiry_note !== 'action_date' && l.expiry_date === date.exp && !!l.no_return === noRet);
   const canMerge = same && (same.shelf_id ?? '') === shelf;
 
   function reset(text: string) {
-    setProduct(null); setQty('1'); setDate(NO_DATE); setDateKey(k => k + 1);
+    setProduct(null); setQty('1'); setDate(NO_DATE); setDateKey(k => k + 1); setNoRet(false);
     setMsg({ text, tone: 'ok' });
   }
   async function save() {
@@ -110,7 +111,7 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
     if ((d < 0 || d > 5 * 365) && !await ask({ title: `HSD ${fmt(date.exp)} ${d < 0 ? `đã quá ${-d} ngày` : 'xa hơn 5 năm'}`, body: 'Có gõ nhầm năm không? Kiểm tra lại ngày in trên bao bì.', ok: 'Vẫn lưu' })) return;
     setBusy(true);
     try {
-      const row = { product_id: product.id, shelf_id: shelf || null, qty: n, expiry_date: date.exp, mfg_date: date.mfg };
+      const row = { product_id: product.id, shelf_id: shelf || null, qty: n, expiry_date: date.exp, mfg_date: date.mfg, no_return: noRet };
       const view = { ...row, expiry_note: null, status: 'on_shelf', shelves: sh ? { name: sh.name } : null,
         products: { id: product.id, name: product.name, name_vi: product.name_vi, ax_code: product.ax_code, brand: product.brand, vendor_id: product.vendor_id,
           no_return: product.no_return, sanh_dieu: product.sanh_dieu, vendors: product.vendors ?? null } };
@@ -180,10 +181,11 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
         </div>
         <label className="lbl">Hạn sử dụng</label>
         <DateInput key={dateKey} onChange={setDate} />
+        {product && <label className="check"><input type="checkbox" checked={noRet} onChange={e => setNoRet(e.target.checked)} />Lô này không đổi trả, chỉ dán giảm giá</label>}
       </div>
 
       <div className="savebar">
-        {product && date.exp && terms && <ActionLine a={actionFor({ expiry_date: date.exp, expiry_note: null }, product, terms)} status="on_shelf" />}
+        {product && date.exp && terms && <ActionLine a={actionFor({ expiry_date: date.exp, expiry_note: null, no_return: noRet }, product, terms)} status="on_shelf" />}
         {same && (
           <p className="note warn">
             Đã có lô cùng HSD {sh?.id === same.shelf_id ? 'trên kệ này' : same.shelves ? 'trên ' + same.shelves.name : 'chưa gắn kệ'} (SL {same.qty}).
