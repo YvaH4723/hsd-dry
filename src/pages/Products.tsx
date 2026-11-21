@@ -7,9 +7,10 @@ import BatchList from '../components/BatchList.tsx';
 import Icon from '../components/Icon.tsx';
 import Scanner from '../components/Scanner.tsx';
 import { LotsLoading } from '../components/Lot.tsx';
-import { localNoCode } from '../lib/offline.ts';
+import { localActive, localNoCode } from '../lib/offline.ts';
 
 const SHOW = 200;
+const PAGE = 100;
 const attached = new Set<string>();     // đã gắn mã trong phiên này: bỏ khỏi danh sách Chưa có mã vạch ngay
 const vcode = (v: Vendor) => v.code.startsWith('TB-') ? 'chưa có mã NCC' : v.code;
 
@@ -30,6 +31,10 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
   const [ncQ, setNcQ] = useState('');
   const [all, setAll] = useState<Product[] | null>(null);       // toàn bộ sản phẩm của NCC đang chọn
   const terms = useTerms(store);
+  const [cat, setCat] = useState<Product[] | null>(null);       // cả danh mục đang bán, hiện sẵn khi chưa gõ tìm
+  const [inStock, setInStock] = useState(false);
+  const [more, setMore] = useState(PAGE);
+  useEffect(() => { localActive().then(setCat, () => setCat([])); }, [store, rev]);
 
   useEffect(() => {
     supabase.from('products').select('id', { count: 'exact', head: true }).eq('store_id', store).eq('active', true).is('deleted_at', null)
@@ -116,15 +121,36 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
         </div>
       )}
       {err && <p className="msg bad">{err}</p>}
+      {rows == null && !vendor && cat?.length ? <Catalog ps={cat} inStock={inStock} setInStock={v => { setInStock(v); setMore(PAGE); }} more={more} setMore={setMore} openP={p => { setOpen(p); scrollTo(0, 0); }} /> : null}
       {rows != null ? (rows.length ? list(rows) : !err && <p className="note">Không tìm thấy “{q.trim()}”{vendor ? ' trong NCC này' : ''}. Thử bớt chữ, hoặc gõ mã AX.</p>)
         : vendor ? (all == null ? (!err && <LotsLoading />) : all.length ? list(all) : <p className="note">NCC này chưa có sản phẩm nào trong danh mục.</p>)
-        : (
+        : cat?.length ? null : (
         <p className="note">
           {total == null ? 'Gõ ít nhất 2 ký tự: tên tiếng Việt hoặc tên gốc (không dấu cũng được), mã AX, mã vạch.'
             : `${total.toLocaleString('vi-VN')} sản phẩm đang bán. Gõ ít nhất 2 ký tự để tìm: tên (không dấu cũng được), mã AX, mã vạch.`}
           {total === 0 && member.role === 'admin' ? ' Chưa có danh mục: vào Khác → Nhập file.' : ''}
         </p>
       )}
+    </>
+  );
+}
+
+// Danh sách mặc định: mọi sản phẩm đang bán theo thứ tự chữ cái, lọc nhanh "Còn tồn", bấm Xem thêm để mở thêm.
+function Catalog({ ps, inStock, setInStock, more, setMore, openP }: { ps: Product[]; inStock: boolean; setInStock: (v: boolean) => void; more: number; setMore: (n: number) => void; openP: (p: Product) => void }) {
+  const have = ps.filter(p => Number(p.stock_qty) > 0), noData = !ps.some(p => p.stock_qty != null);
+  const sel = inStock ? have : ps;
+  return (
+    <>
+      {!noData && (
+        <div className="seg" role="group" aria-label="Lọc">
+          <button aria-pressed={!inStock} onClick={() => setInStock(false)}>Tất cả ({ps.length.toLocaleString('vi-VN')})</button>
+          <button aria-pressed={inStock} onClick={() => setInStock(true)}>Còn tồn ({have.length.toLocaleString('vi-VN')})</button>
+        </div>
+      )}
+      <div className="list">{sel.slice(0, more).map(r => <ProductRow key={r.id} p={r} onClick={() => openP(r)} />)}</div>
+      {sel.length > more
+        ? <button className="block" onClick={() => setMore(more + PAGE)}>Xem thêm ({(sel.length - more).toLocaleString('vi-VN')} sản phẩm nữa)</button>
+        : <p className="note center">Hết danh sách ({sel.length.toLocaleString('vi-VN')} sản phẩm).</p>}
     </>
   );
 }

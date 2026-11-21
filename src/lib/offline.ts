@@ -126,6 +126,12 @@ export async function localNoCode(): Promise<Product[]> {
   if (!products.length) throw new Error(NO_SNAPSHOT);
   return products.filter(p => !p.barcodes?.length && (p.active || /^TB\b/.test(p.category ?? '')));
 }
+// Mọi sản phẩm đang bán (danh sách mặc định của trang Sản phẩm), xếp theo tên.
+export async function localActive(): Promise<Product[]> {
+  const { products } = await local();
+  if (!products.length) throw new Error(NO_SNAPSHOT);
+  return products.filter(p => p.active).sort((a, b) => (a.name_vi?.trim() || a.name).localeCompare(b.name_vi?.trim() || b.name, 'vi'));
+}
 // Vừa gắn mã có mạng: ghi luôn vào bản lưu trên máy để quét lúc mất mạng / Chưa có mã vạch thấy ngay, khỏi chờ tải lại.
 export async function localAddCodes(id: string, codes: string[]) {
   const products = (await get<Product[]>('products')) ?? [];
