@@ -127,6 +127,27 @@ assert.equal(applyOutbox([{ id: 'x', qty: 5, status: 'on_shelf', expiry_date: '2
 }
 console.log('Quy tắc: OK');
 
+// Stock On Hand: chỉ lấy Dry của đúng kho, cộng các dòng theo lô, làm tròn số lẻ.
+{
+  const { parseStock } = await import('../src/lib/stock.ts');
+  const row = (w: string, ax: string, q: number, l1: string, l2: string, l3 = 'NA', v = 'AFF 01') => ({ 'Warehouse ID': w, 'Product ID': ax, 'Product Name': ax + ' name', 'Physical Inventory Quantity': q, 'Vendor ID': v, 'Category Name Level 1': l1, 'Category Name Level 2': l2, 'Category Name Level 3': l3 });
+  const s = parseStock([
+    row('RGSHN', 'F1', 13.000000000000002, '1 - FOOD', '101 - DRY FOOD', '10101 - SWEET GROCERY'),
+    row('RGSHN', 'F1', 2, '1 - FOOD', '101 - DRY FOOD', '10101 - SWEET GROCERY'),
+    row('RGSVLB', 'F1', 99, '1 - FOOD', '101 - DRY FOOD', '10101 - SWEET GROCERY'),
+    row('RGSHN', 'F2', 5, '1 - FOOD', '102 - FRESH FOOD'),
+    row('RGSHN', 'W1', 5, '2 - BEVERAGE', '201 - ALCOHOL AND SPIRITS'),
+    row('RGSHN', 'N1', 5, '14 - STORES CONSUMPTION', '1403- CASHIER NG'),
+    row('RGSHN', 'H1', 1, '3 - NON FOOD', '301 - HPC', '30101 - BABY CARE'),
+    { 'Warehouse ID': 'Exported data exceeded the allowed volume. Some data may have been omitted.' },
+  ], 'RGSHN');
+  const f1 = s.items.find(i => i.ax === 'F1')!;
+  assert.ok(s.items.length === 2 && f1.qty === 15 && f1.group === 'sweet' && f1.category === 'SWEET GROCERY' && f1.vendorCode === 'AFF01', 'stock: Dry + gộp lô');
+  assert.ok(s.items.some(i => i.ax === 'H1'), 'stock: lấy Non-Food');
+  assert.ok(s.truncated && s.other === 3 && s.warehouses.join() === 'RGSHN,RGSVLB', 'stock: cảnh báo file bị cắt, đếm hàng quầy khác');
+  console.log('stock ok');
+}
+
 const [cadPath, conPath] = process.argv.slice(2);
 if (!cadPath) process.exit(0);
 const cad: Record<string, unknown>[] = JSON.parse(readFileSync(cadPath, 'utf8')).filter((r: any) => r['AX Code']);
@@ -147,3 +168,4 @@ const review = vendors.filter(v => v.review);
 console.log(`NCC trong Contact List: ${vendors.length} — báo trả ${vendors.filter(v => !v.review && v.action === 'return').length}, giảm giá ${vendors.filter(v => !v.review && v.action === 'discount').length}, cần xem ${review.length}`);
 console.log(`NCC của Cadencia không có điều khoản: ${missing.size} (${items.filter(i => missing.has(i.vendorCode)).length} SP)`);
 console.log('\nCẦN XEM:\n' + review.map(v => `- ${v.code} | ${v.raw.replace(/\n/g, ' / ')}`).join('\n'));
+

@@ -6,6 +6,7 @@ const mapAll = (rows: Record<string, unknown>[]) => rows.map(mapRow).filter(i =>
 import { resolveVendors, type VendorTerm } from '../lib/terms.ts';
 import { fetchAll, reloadTerms } from '../lib/db.ts';
 import { refreshSnapshot } from '../lib/offline.ts';
+import { parseStock, STOCK_COL, type StockFile } from '../lib/stock.ts';
 
 const chunks = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 
@@ -128,6 +129,7 @@ export default function Import({ member }: { member: Member }) {
   return (
     <>
       <h2 className="title">Nhập file</h2>
+      <StockImport store={store} />
       <ContactImport store={store} />
       <div className="panel">
         <h2>Danh mục sản phẩm</h2>
@@ -224,6 +226,92 @@ function ContactImport({ store }: { store: string }) {
           <button className="pri block" disabled={busy} onClick={apply}>Xác nhận ghi</button>
         </>
       )}
+    </div>
+  );
+}
+
+// Stock On Hand (D365): cập nhật số tồn cho sản phẩm quầy Dry của một kho, thêm sản phẩm còn tồn mà app chưa có.
+// Không đụng tên, giá, NCC, lô HSD của sản phẩm đã có.
+const WH_KEY = 'hsd.stock-wh';
+function StockImport({ store }: { store: string }) {
+  const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
+  const [wh, setWh] = useState(() => localStorage.getItem(WH_KEY) || 'RGSHN');
+  const [have, setHave] = useState<Set<string>>(new Set());
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+  const f: StockFile | null = rows && parseStock(rows, wh);
+  const added = f ? f.items.filter(i => i.qty > 0 && !have.has(i.ax)) : [];
+
+  async function pick(file?: File) {
+    if (!file) return;
+    setBusy(true); setRows(null); setMsg('Đang đọc file (file lớn có thể mất nửa phút)…');
+    try {
+      const r = await readRows(file, STOCK_COL, 'Stock On Hand');
+      const ex = await fetchAll<{ ax_code: string }>((a, b) => supabase.from('products').select('ax_code').eq('store_id', store).not('ax_code', 'is', null).order('ax_code').range(a, b));
+      setHave(new Set(ex.map(e => e.ax_code.trim().toUpperCase())));
+      const whs = parseStock(r, wh).warehouses;
+      if (whs.length && !whs.includes(wh)) setWh(whs[0]);
+      setRows(r); setMsg('');
+    } catch (e: any) { setMsg('Lỗi: ' + e.message); }
+    setBusy(false);
+  }
+
+  async function apply() {
+    if (!f) return;
+    setBusy(true);
+    try {
+      localStorage.setItem(WH_KEY, wh);
+      if (added.length) {
+        setMsg(`Đang thêm ${added.length} sản phẩm mới…`);
+        const vs = await fetchAll<{ id: string; code: string }>((a, b) => supabase.from('vendors').select('id,code').eq('store_id', store).is('deleted_at', null).order('code').range(a, b));
+        const vid = new Map(vs.map(v => [v.code.replace(/\s+/g, '').toUpperCase(), v.id]));
+        for (const c of chunks(added, 500)) {
+          const { error } = await supabase.from('products').upsert(c.map(i => ({
+            store_id: store, ax_code: i.ax, name: i.name, name_search: i.nameSearch, vendor_id: vid.get(i.vendorCode) ?? null,
+            dept_group: i.group || null, category: i.category, active: false,
+          })), { onConflict: 'store_id,ax_code', ignoreDuplicates: true });
+          if (error) throw error;
+        }
+      }
+      let n = 0;
+      for (const [k, c] of chunks(f.items, 2000).entries()) {
+        setMsg(`Đang ghi số tồn ${Math.min((k + 1) * 2000, f.items.length)}/${f.items.length}…`);
+        const { data, error } = await supabase.rpc('set_stock', { p_store: store, p_rows: c.map(i => ({ ax: i.ax, q: i.qty })) });
+        if (error) throw error;
+        n += data ?? 0;
+      }
+      await supabase.from('import_runs').insert({ store_id: store, kind: 'stock', added: added.length, updated: n });
+      setMsg(`Xong: cập nhật tồn ${n} sản phẩm, thêm mới ${added.length}.`);
+      setRows(null);
+      refreshSnapshot(store);
+    } catch (e: any) { setMsg('Lỗi khi ghi (chọn lại file để làm tiếp): ' + e.message); }
+    setBusy(false);
+  }
+
+  return (
+    <div className="panel">
+      <h2>Tồn kho (Stock On Hand)</h2>
+      <p className="note">File xuất từ hệ thống cửa hàng (có cột Product ID). Chỉ lấy hàng quầy Dry (Dry Food, Non-Food) của kho đã chọn; bỏ Fresh, Beverage, thu ngân, lounge. Cập nhật số tồn, thêm sản phẩm còn tồn mà app chưa có. Không sửa tên, giá, NCC, lô HSD.</p>
+      <input type="file" accept=".xlsx,.xls" aria-label="Chọn file Stock On Hand" disabled={busy} onChange={e => { pick(e.target.files?.[0]); e.target.value = ''; }} />
+      {f && (
+        <>
+          {f.warehouses.length > 1 && (
+            <label className="lbl">Kho
+              <select value={wh} onChange={e => setWh(e.target.value)}>{f.warehouses.map(w => <option key={w}>{w}</option>)}</select>
+            </label>
+          )}
+          {f.truncated && <p className="msg warn">File bị cắt bớt: hệ thống chỉ xuất tối đa một số dòng nên có thể thiếu sản phẩm. Khi xuất, lọc chỉ kho {wh} (và nhóm Dry Food, Non-Food) để file đủ.</p>}
+          <div className="stats">
+            <div><b>{f.items.length}</b>SP quầy Dry</div>
+            <div><b className="ok">{f.items.filter(i => i.qty > 0).length}</b>Còn tồn</div>
+            <div><b className="ok">{added.length}</b>Thêm mới</div>
+            <div><b className="mute">{f.other}</b>Dòng quầy khác (bỏ)</div>
+          </div>
+          {added.slice(0, 10).map(i => <p className="note" key={i.ax}>Thêm: {i.ax} {i.name} · tồn {i.qty}</p>)}
+          <button className="pri block" disabled={busy || !f.items.length} onClick={apply}>Xác nhận ghi</button>
+        </>
+      )}
+      {msg && <p className={msg.startsWith('Lỗi') ? 'msg bad' : 'note'}>{msg}</p>}
     </div>
   );
 }

@@ -6,11 +6,11 @@ export { BATCH_COLS, codeVariants, fetchAll } from './offline.ts';
 
 export interface Product {
   id: string; ax_code: string | null; name: string; name_vi?: string | null; brand: string | null; price: number | null; active: boolean;
-  category: string | null; vendor_id: string | null; no_return: boolean; sanh_dieu: boolean;
+  category: string | null; vendor_id: string | null; no_return: boolean; sanh_dieu: boolean; stock_qty?: number | null; stock_at?: string | null;
   vendors?: { code: string; name: string } | null; barcodes?: { code: string }[];
 }
 export interface Shelf { id: string; name: string; qr_code: string; sort_order: number; zone_id?: string | null }
-export const PRODUCT_COLS = 'id,ax_code,name,name_vi,brand,price,active,category,vendor_id,no_return,sanh_dieu,vendors(code,name),barcodes(code)';
+export const PRODUCT_COLS = 'id,ax_code,name,name_vi,brand,price,active,category,vendor_id,no_return,sanh_dieu,stock_qty,stock_at,vendors(code,name),barcodes(code)';
 
 const ok = <T,>(r: { data: T | null; error: { message: string } | null }) => { if (r.error) throw new Error(r.error.message); return r.data; };
 
