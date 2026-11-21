@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
 import { reloadTerms, settingsOf } from '../lib/db.ts';
+import { ask } from '../components/Ask.tsx';
 import { isNet } from '../lib/offline.ts';
 
 // Hai mốc tính ngày: dán giảm giá trước HSD N ngày; báo trả sớm hơn điều khoản NCC M ngày cho an toàn.
@@ -20,6 +21,7 @@ export default function Settings({ member }: { member: Member }) {
   async function save() {
     const dd = parseInt(d), bb = parseInt(b);
     if (!(dd >= 0 && bb >= 0)) return setMsg({ text: 'Nhập số ngày hợp lệ.' });
+    if (!await ask({ title: 'Lưu mốc ngày mới?', body: `Giảm giá trước HSD ${dd} ngày, an toàn ${bb} ngày. Ngày báo trả, giảm giá của mọi lô sẽ tính lại theo mốc này.`, ok: 'Lưu' })) return;
     setBusy(true);
     const { error } = await supabase.from('stores').update({ discount_days: dd, return_buffer_days: bb }).eq('id', member.store_id);
     setBusy(false);

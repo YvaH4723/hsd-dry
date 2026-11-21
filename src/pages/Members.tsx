@@ -130,10 +130,10 @@ export default function Members({ member, myId }: { member: Member; myId?: strin
                 )}
                 {me ? <p className="note">Quản trị. Không tự đổi quyền của mình để tránh mất quyền quản trị. Đổi khu của mình xong, tắt mở lại app để áp dụng.</p> : (
                   <>
-                    <select aria-label={'Quyền của ' + r.name} value={r.role} onChange={e => { const v = e.target.value as Member['role']; set(r, { role: v, can_write: v !== 'viewer', can_delete: v === 'admin' ? true : r.can_delete && v !== 'viewer' }); }}>
+                    <select aria-label={'Quyền của ' + r.name} value={r.role} onChange={async e => { const v = e.target.value as Member['role']; if (!await ask({ title: `Đổi quyền của ${r.name} thành ${ROLES.find(x => x[0] === v)?.[1]}?`, ok: 'Đổi quyền', danger: v === 'admin' })) return; set(r, { role: v, can_write: v !== 'viewer', can_delete: v === 'admin' ? true : r.can_delete && v !== 'viewer' }); }}>
                       {ROLES.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
                     </select>
-                    {r.role === 'staff' && <label className="check"><input type="checkbox" checked={r.can_delete} onChange={e => set(r, { can_delete: e.target.checked })} />Được xóa lô, xóa kệ</label>}
+                    {r.role === 'staff' && <label className="check"><input type="checkbox" checked={r.can_delete} onChange={async e => { const v = e.target.checked; if (await ask({ title: v ? `Cho ${r.name} xóa lô, xóa kệ?` : `Bỏ quyền xóa của ${r.name}?`, ok: v ? 'Cho phép' : 'Bỏ quyền' })) set(r, { can_delete: v }); }} />Được xóa lô, xóa kệ</label>}
                   </>
                 )}
               </div>

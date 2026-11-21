@@ -8,11 +8,17 @@ import Scanner from './Scanner.tsx';
 import { describeTerm, termAt, termFor, type Cfg } from '../lib/action.ts';
 import { TermEditor } from '../pages/Terms.tsx';
 import Icon from './Icon.tsx';
+import { ask } from './Ask.tsx';
 
 // Bỏ bản mã có thêm số 0 do app tự tạo cho mã UPC, để danh sách mã gọn.
-// Sản phẩm đã có mã mà gắn thêm mã khác: hỏi lại, vì hay gặp nhất là quét nhầm hộp vị khác cùng hãng.
-export const confirmExtra = (p: Product, code: string) => !p.barcodes?.length || confirm(
-  `"${pname(p)}" đã có mã ${showCodes(p)}.\n\nGắn thêm mã ${code}? Chỉ gắn khi đúng là cùng sản phẩm (bao bì mới, lốc, hộp…). Hộp khác vị / khác cỡ là sản phẩm khác.`);
+// Gắn mã vào sản phẩm luôn hỏi lại: hay gặp nhất là quét nhầm hộp khác vị / khác cỡ cùng hãng.
+export const confirmAttach = (p: Product, code: string) => ask({
+  title: `Gắn mã ${code} cho sản phẩm này?`,
+  body: `${pname(p)}${p.ax_code ? ` (${p.ax_code})` : ''}\n\n` + (p.barcodes?.length
+    ? `Sản phẩm đã có mã ${showCodes(p)}. Chỉ gắn thêm khi đúng là cùng sản phẩm (bao bì mới, lốc, hộp). Khác vị, khác dung tích là sản phẩm khác.`
+    : 'So tên, vị, dung tích trên bao bì với tên ở trên trước khi gắn.'),
+  ok: 'Gắn mã',
+});
 export const showCodes = (p: Product) => (p.barcodes ?? []).map(b => b.code).filter((c, _, all) => !all.some(o => o !== c && c === '0' + o)).join(', ') || 'Chưa có mã vạch';
 export const vendorText = (p: Product) => !p.vendors ? 'Chưa có NCC' : p.vendors.code.startsWith('TB-') ? `${p.vendors.name} (chưa có mã NCC)` : `${p.vendors.name} · ${p.vendors.code}`;
 
@@ -56,7 +62,7 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
     if (!/^\d{6,14}$/.test(code)) return setErr(`"${code}" không phải mã vạch sản phẩm (chỉ gồm 6–14 chữ số). Quét lại mã trên bao bì.`);
     const rows = (/^\d{11,12}$/.test(code) ? codeVariants(code) : [code]).map(c => ({ store_id: member.store_id, product_id: p.id, code: c }));
     if ((p.barcodes ?? []).some(b => rows.some(r => r.code === b.code))) return setOk(`Mã ${code} đã gắn với sản phẩm này rồi.`);
-    if (!confirmExtra(p, code)) return;
+    if (!await confirmAttach(p, code)) return;
     const { data, error } = await supabase.from('barcodes').upsert(rows, { onConflict: 'store_id,code', ignoreDuplicates: true }).select('code');
     if (error) return setErr(isNet(error) ? 'Đang mất mạng: gắn mã cần có mạng.' : 'Lỗi gắn mã: ' + error.message);
     if (!data?.length) {
@@ -69,7 +75,7 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
   }
   // Gỡ mã gắn nhầm (cả biến thể có / không số 0 đầu của cùng mã).
   async function drop(code: string) {
-    if (!confirm(`Gỡ mã ${code} khỏi "${pname(p)}"?`)) return;
+    if (!await ask({ title: `Gỡ mã ${code}?`, body: `Khỏi "${pname(p)}". Quét mã này sẽ không ra sản phẩm này nữa.`, ok: 'Gỡ mã', danger: true })) return;
     setOk(''); setErr('');
     const codes = (p.barcodes ?? []).map(b => b.code).filter(c => c === code || c === '0' + code || '0' + c === code);
     const { error } = await supabase.from('barcodes').delete().eq('store_id', member.store_id).eq('product_id', p.id).in('code', codes);
@@ -126,8 +132,8 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
             ? <TermEditor store={member.store_id} vendor={{ id: p.vendor_id, code: p.vendors.code, name: p.vendors.name }}
                 main={termAt(terms.idx, p.vendor_id) ?? undefined} done={() => setEdit(false)} />
             : <button className="sm" onClick={() => setEdit(true)}>{t?.problem ? 'Đặt điều khoản cho NCC này' : 'Sửa điều khoản NCC'}</button>)}
-          <label className="check"><input type="checkbox" checked={p.no_return} onChange={e => set({ no_return: e.target.checked })} />Sản phẩm này không đổi trả (dán giảm giá)</label>
-          <label className="check"><input type="checkbox" checked={p.sanh_dieu} onChange={e => set({ sanh_dieu: e.target.checked })} />Hàng Sành Điệu</label>
+          <label className="check"><input type="checkbox" checked={p.no_return} onChange={async e => { const v = e.target.checked; if (await ask({ title: v ? 'Đặt sản phẩm này là không đổi trả?' : 'Bỏ "không đổi trả" cho sản phẩm này?', body: v ? 'Mọi lô của sản phẩm này sẽ chuyển sang dán giảm giá, không báo trả NCC nữa.' : 'Mọi lô của sản phẩm này sẽ tính lại theo điều khoản NCC.', ok: v ? 'Không đổi trả' : 'Bỏ', danger: v })) set({ no_return: v }); }} />Sản phẩm này không đổi trả (dán giảm giá)</label>
+          <label className="check"><input type="checkbox" checked={p.sanh_dieu} onChange={async e => { const v = e.target.checked; if (await ask({ title: v ? 'Đánh dấu Hàng Sành Điệu?' : 'Bỏ dấu Hàng Sành Điệu?', ok: v ? 'Đánh dấu' : 'Bỏ dấu' })) set({ sanh_dieu: v }); }} />Hàng Sành Điệu</label>
         </details>
       )}
       {err && <p className="msg bad">{err}</p>}

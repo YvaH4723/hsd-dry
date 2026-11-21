@@ -123,6 +123,8 @@ export function TermEditor({ store, vendor, main, done }: { store: string; vendo
     const n = parseInt(days);
     if (action === 'return' && !(n > 0)) return setMsg(unit === 'pct' ? 'Nhập phần trăm hạn dùng còn lại.' : 'Nhập số ngày báo trả trước HSD.');
     if (action === 'return' && unit === 'pct' && n > 99) return setMsg('Phần trăm phải từ 1 đến 99.');
+    const what = action !== 'return' ? 'không đổi trả, dán giảm giá' : unit === 'pct' ? `báo trả khi còn ${n}% hạn dùng` : `báo trả trước HSD ${n} ngày`;
+    if (!await ask({ title: `Lưu điều khoản: ${what}?`, body: `Áp dụng cho mọi sản phẩm ${brand ? `nhãn ${brand} ` : ''}của ${vendor.name}, ngày báo của các lô đang theo dõi sẽ tính lại.`, ok: 'Lưu' })) return;
     setBusy(true);
     const row = { action, days: action === 'return' && unit === 'day' ? n : null, pct: action === 'return' && unit === 'pct' ? n : null, needs_review: false, source: 'manual' };
     const { error } = cur
