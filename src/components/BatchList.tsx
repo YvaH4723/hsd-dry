@@ -78,6 +78,7 @@ export default function BatchList({ member, shelfId, productId, rev }: { member:
             <option value="">Mọi việc</option>
             <option value="return">Báo trả NCC</option>
             <option value="discount">Dán giảm giá</option>
+            <option value="watch">Chỉ nhắc</option>
             <option value="nohsd">Chưa có HSD</option>
           </select>
         </div>

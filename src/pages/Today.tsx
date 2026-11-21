@@ -82,6 +82,8 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
       items: open0.filter(x => x.a.kind === 'return' && left(x) >= 0 && left(x) <= SOON).sort(byDate).map(mk('ret', retBtns, retMeta)) },
     { key: 'remind', title: 'Đến ngày nhắc, chưa có HSD', tone: 'ret', tile: 'ret',
       items: open0.filter(x => x.a.kind === 'reminder' && left(x) <= SOON).sort(byDate).map(mk('ret', retBtns, x => `Nhắc ${fmt(x.a.date)} · ${when(left(x))} · chưa có HSD`)) },
+    { key: 'watch', title: 'Sắp hết hạn (không đổi trả, không giảm giá)', tone: 'ret', tile: 'ret',
+      items: open0.filter(x => x.a.kind === 'watch' && left(x) <= 0).sort(byDate).map(mk('ret', () => [['discarded', 'Đã hủy'], SOLD], x => `HSD ${fmt(x.l.expiry_date)} · còn ${daysLeft(x.l.expiry_date)} ngày`)) },
     { key: 'disc', title: 'Cần dán giảm giá', tone: 'disc', tile: 'disc',
       items: open0.filter(x => x.a.kind === 'discount' && left(x) <= SOON).sort(byDate).map(mk('disc', () => [['discounted', 'Đã dán giảm giá', true], SOLD], x => `Dán giảm giá từ ${fmt(x.a.date)} · ${when(left(x))}`)) },
     { key: 'pick', title: 'Đã báo trả, chờ NCC lấy', tone: 'pick', tile: 'pick',

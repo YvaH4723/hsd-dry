@@ -36,7 +36,7 @@ export default function Backup({ store }: { store: string }) {
         return {
           'Mã AX': l.products?.ax_code, 'Sản phẩm': pname(l.products), 'Tên gốc': l.products?.name, 'NCC': l.products?.vendors?.name, 'Mã NCC': l.products?.vendors?.code,
           'Kệ': l.shelves?.name, 'SL': l.qty, 'HSD': l.expiry_note === 'action_date' ? '' : l.expiry_date,
-          'NSX': l.mfg_date, 'Ghi chú ngày': NOTE[l.expiry_note] ?? '', 'Việc phải làm': a.kind === 'return' ? 'Báo trả' : a.kind === 'discount' ? 'Dán giảm giá' : 'Nhắc',
+          'NSX': l.mfg_date, 'Ghi chú ngày': NOTE[l.expiry_note] ?? '', 'Việc phải làm': a.kind === 'return' ? 'Báo trả' : a.kind === 'watch' ? 'Kiểm hạn' : a.kind === 'discount' ? 'Dán giảm giá' : 'Nhắc',
           'Ngày phải làm': a.date, 'Trạng thái': STATUS[l.status] ?? l.status, 'Đã xóa': l.deleted_at ? 'x' : '', 'Sửa lần cuối': l.updated_at, 'id': l.id,
         };
       }));
@@ -47,7 +47,7 @@ export default function Backup({ store }: { store: string }) {
       })));
       add('Điều khoản', terms.filter(t => !t.deleted_at).map(t => ({
         'Mã NCC': vname.get(t.vendor_id)?.code, 'NCC': vname.get(t.vendor_id)?.name, 'Nhãn hàng': t.brand ?? '', 'Riêng sản phẩm': t.product_id ? 'x' : '',
-        'Loại': t.needs_review ? 'Cần chọn tay' : t.action === 'return' ? 'Báo trả' : 'Giảm giá', 'Số ngày': t.days, 'Câu gốc': t.raw_text, 'Nguồn': t.source === 'manual' ? 'Sửa tay' : 'File',
+        'Loại': t.needs_review ? 'Cần chọn tay' : t.action === 'return' ? 'Báo trả' : t.action === 'watch' ? 'Chỉ nhắc' : 'Giảm giá', 'Số ngày': t.days, 'Câu gốc': t.raw_text, 'Nguồn': t.source === 'manual' ? 'Sửa tay' : 'File',
       })));
       add('NCC', vendors.map(v => ({ 'Mã NCC': v.code, 'Tên': v.name })));
       add('Kệ', shelves.filter(s => !s.deleted_at).map(s => ({ 'Kệ': s.name, 'Mã QR': s.qr_code, 'Thứ tự': s.sort_order })));

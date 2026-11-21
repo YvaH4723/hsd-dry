@@ -110,10 +110,10 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
         {admin && vi === null && <button className="icon" aria-label="Sửa tên tiếng Việt" onClick={() => setVi(p.name_vi ?? '')}><Icon name="edit" /></button>}
       </div>
       {t && terms && (
-        <div className={`term ${t.problem ? 'warn' : t.kind === 'return' ? 'ret' : 'disc'}`}>
-          <Icon name={t.problem ? 'alert' : t.kind === 'return' ? 'truck' : 'tag'} size={20} />
+        <div className={`term ${t.problem ? 'warn' : t.kind === 'discount' ? 'disc' : 'ret'}`}>
+          <Icon name={t.problem ? 'alert' : t.kind === 'return' ? 'truck' : t.kind === 'watch' ? 'bell' : 'tag'} size={20} />
           <div>
-            <b>{t.problem ? 'Cần đặt điều khoản' : t.kind === 'return' ? `Báo trả NCC · ${t.days} ngày` : 'Không đổi trả · dán giảm giá'}</b>
+            <b>{t.problem ? 'Cần đặt điều khoản' : t.kind === 'return' ? `Báo trả NCC · ${t.days} ngày` : t.kind === 'watch' ? `Chỉ nhắc · còn ${t.days} ngày` : 'Không đổi trả · dán giảm giá'}</b>
             <div>{describeTerm(t, terms)}</div>
             {t.raw && t.problem && <div className="note">Câu gốc: {t.raw}</div>}
           </div>

@@ -158,6 +158,16 @@ console.log('Quy tắc: OK');
   console.log('stock ok');
 }
 
+// Chỉ nhắc: không đổi trả, không giảm giá, nhắc khi HSD còn N ngày (không cộng ngày an toàn).
+{
+  const { actionFor, indexTerms } = await import('../src/lib/action.ts');
+  const cfg = { idx: indexTerms([{ vendor_id: 'VD', brand: null, product_id: null, action: 'watch', days: 10, raw_text: null, needs_review: false }]), discountDays: 45, returnBuffer: 5 };
+  const p = { id: 'x', brand: null, vendor_id: 'VD', no_return: false, sanh_dieu: false, vendors: { code: 'LS3029' } };
+  const a = actionFor({ expiry_date: '2027-01-14', expiry_note: null }, p, cfg);
+  assert.ok(a.kind === 'watch' && a.date === '2027-01-04', 'watch: nhắc trước HSD 10 ngày');
+  assert.equal(actionFor({ expiry_date: '2027-01-14', expiry_note: null, no_return: true }, p, cfg).kind, 'discount');
+  console.log('watch ok');
+}
 const [cadPath, conPath] = process.argv.slice(2);
 if (!cadPath) process.exit(0);
 const cad: Record<string, unknown>[] = JSON.parse(readFileSync(cadPath, 'utf8')).filter((r: any) => r['AX Code']);

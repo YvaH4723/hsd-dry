@@ -16,7 +16,7 @@ function toneOf(b: any, terms: Cfg): Tone | null {
   if (b.expiry_note !== 'action_date' && daysLeft(b.expiry_date) < 0) return b.status === 'on_shelf' || b.status === 'discounted' ? 'bad' : null;
   if (b.status !== 'on_shelf') return null;
   const a = actionFor(b, b.products, terms), d = daysLeft(a.date);
-  return d > 7 ? null : a.kind === 'discount' ? 'disc' : a.kind === 'return' && d < 0 ? 'bad' : 'ret';
+  return a.kind === 'watch' ? (d > 0 ? null : 'ret') : d > 7 ? null : a.kind === 'discount' ? 'disc' : a.kind === 'return' && d < 0 ? 'bad' : 'ret';
 }
 type Count = { n: number; todo: number; tone: Tone | null };
 const errText = (e: { message: string }) => isNet(e) ? 'Đang mất mạng: sửa kệ cần có mạng.' : 'Lỗi: ' + e.message;

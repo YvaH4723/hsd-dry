@@ -8,7 +8,7 @@ export default function ActionLine({ a, status }: { a: Action; status: string })
   if (status === 'discounted') return <span className="act disc"><Icon name="tag" size={15} />Đã dán giảm giá</span>;
   const d = daysLeft(a.date);
   const tone = d < 0 ? 'bad' : a.kind === 'discount' ? 'disc' : 'ret';      // màu theo việc, quá ngày thì đỏ
-  const what = a.kind === 'return' ? 'Báo trả NCC trước' : a.kind === 'discount' ? 'Dán giảm giá từ' : 'Nhắc';
+  const what = a.kind === 'return' ? 'Báo trả NCC trước' : a.kind === 'discount' ? 'Dán giảm giá từ' : a.kind === 'watch' ? 'Kiểm hạn từ' : 'Nhắc';
   const when = d < 0 ? `quá ${-d} ngày` : d === 0 ? 'hôm nay' : `còn ${d} ngày`;
   return (
     <>

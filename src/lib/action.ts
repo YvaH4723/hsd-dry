@@ -2,16 +2,17 @@ import { normVendor } from './terms.ts';
 // Tính việc phải làm cho một lô:
 //   báo trả NCC: HSD − (N ngày của NCC + số ngày an toàn, mặc định 5)
 //   dán giảm giá: HSD − mốc giảm giá (mặc định 45) cho hàng không đổi trả / chưa có điều khoản.
+//   chỉ nhắc (watch): không đổi trả, không giảm giá; nhắc khi HSD còn N ngày (ví dụ sữa bột VitaDairy, 10 ngày).
 // Điều khoản 3 cấp, cấp dưới đè cấp trên: sản phẩm → nhãn hàng của NCC → NCC.
 import { addShelfLife } from './dates.ts';
 
-export interface Term { vendor_id: string; brand: string | null; product_id: string | null; action: 'return' | 'discount'; days: number | null; pct?: number | null; raw_text: string | null; needs_review: boolean }
+export interface Term { vendor_id: string; brand: string | null; product_id: string | null; action: 'return' | 'discount' | 'watch'; days: number | null; pct?: number | null; raw_text: string | null; needs_review: boolean }
 export interface LotProduct { id: string; brand: string | null; vendor_id: string | null; no_return: boolean; sanh_dieu: boolean; vendors?: { code: string; name?: string } | null }
 export interface Cfg { idx: Map<string, Term>; discountDays: number; returnBuffer: number }
 // problem: thiếu thông tin, app tạm tính giảm giá (hiện màu vàng). why: lý do bình thường (không đổi trả, hàng Ân Nam…).
 // pct: NCC nhận trả khi lô còn pct% hạn dùng (tính từ NSX đến HSD), thay cho số ngày cố định.
-export interface TermInfo { kind: 'return' | 'discount'; days: number | null; pct?: number | null; problem?: string; why?: string; raw?: string | null; level?: 'product' | 'brand' | 'vendor' }
-export interface Action { kind: 'return' | 'discount' | 'reminder'; date: string; label?: string; raw?: string | null; why?: string; needMfg?: boolean }
+export interface TermInfo { kind: 'return' | 'discount' | 'watch'; days: number | null; pct?: number | null; problem?: string; why?: string; raw?: string | null; level?: 'product' | 'brand' | 'vendor' }
+export interface Action { kind: 'return' | 'discount' | 'reminder' | 'watch'; date: string; label?: string; raw?: string | null; why?: string; needMfg?: boolean }
 
 export const OWN_BRAND = new Set(['AFF01', 'SG99']);   // Ân Nam, Annam Gourmet: luôn dán giảm giá
 // Điều khoản cấp sản phẩm khớp theo sản phẩm, bỏ qua nhãn và NCC (NCC đổi sau khi nhập file vẫn giữ được).
@@ -31,6 +32,7 @@ export function termFor(p: LotProduct, idx: Map<string, Term>): TermInfo {
   const level = byProduct ? 'product' : byBrand ? 'brand' : 'vendor';
   if (!t) return { kind: 'discount', days: null, problem: 'Chưa có điều khoản' };
   if (t.needs_review || (t.action === 'return' && !t.days && !t.pct)) return { kind: 'discount', days: null, problem: 'Cần chọn điều khoản', raw: t.raw_text, level };
+  if (t.action === 'watch') return { kind: 'watch', days: t.days ?? 10, raw: t.raw_text, level };
   return t.action === 'return'
     ? { kind: 'return', days: t.days, pct: t.pct ?? null, raw: t.raw_text, level }
     : { kind: 'discount', days: null, why: 'NCC không đổi trả', raw: t.raw_text, level };
@@ -49,6 +51,7 @@ export function actionFor(lot: { expiry_date: string; expiry_note: string | null
     if (life <= 0) return { kind: 'discount', date: before(cfg.discountDays), label: `Thiếu NSX: NCC nhận trả khi còn ${t.pct}% hạn dùng, nhập NSX để tính ngày báo trả`, needMfg: true };
     return { kind: 'return', date: before(Math.ceil(life * t.pct / 100) + cfg.returnBuffer), raw: t.raw };
   }
+  if (t.kind === 'watch') return { kind: 'watch', date: before(t.days!), why: 'Không đổi trả, không giảm giá' };
   return t.kind === 'return'
     ? { kind: 'return', date: before(t.days! + cfg.returnBuffer), raw: t.raw }
     : { kind: 'discount', date: before(cfg.discountDays), label: t.problem, raw: t.problem ? t.raw : undefined };
@@ -58,6 +61,7 @@ export function describeTerm(t: TermInfo, cfg: Pick<Cfg, 'discountDays' | 'retur
   const lvl = t.level === 'brand' ? ' (theo nhãn hàng)' : t.level === 'product' ? ' (riêng sản phẩm)' : '';
   if (t.kind === 'return' && t.pct) return `Báo trả NCC khi còn ${t.pct}% hạn dùng (tính từ NSX) + ${cfg.returnBuffer} ngày an toàn${lvl}`;
   if (t.kind === 'return') return `Báo trả NCC trước HSD ${t.days} ngày + ${cfg.returnBuffer} ngày an toàn${lvl}`;
+  if (t.kind === 'watch') return `Không đổi trả, không giảm giá: nhắc khi HSD còn ${t.days} ngày${lvl}`;
   if (t.problem) return `${t.problem}: tạm dán giảm giá trước HSD ${cfg.discountDays} ngày`;
   return `${t.why}: dán giảm giá trước HSD ${cfg.discountDays} ngày${lvl}`;
 }

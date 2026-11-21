@@ -9,7 +9,7 @@ import Icon from '../components/Icon.tsx';
 import { LotsLoading } from '../components/Lot.tsx';
 import { ask } from '../components/Ask.tsx';
 
-interface T { id: string; vendor_id: string; brand: string | null; product_id: string | null; action: 'return' | 'discount'; days: number | null; pct?: number | null; raw_text: string | null; needs_review: boolean; source: string }
+interface T { id: string; vendor_id: string; brand: string | null; product_id: string | null; action: 'return' | 'discount' | 'watch'; days: number | null; pct?: number | null; raw_text: string | null; needs_review: boolean; source: string }
 interface V { id: string; code: string; name: string }
 type Mode = 'all' | 'missing' | 'review';
 const same = (a: string | null, b: string | null) => (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase();
@@ -39,6 +39,7 @@ export default function Terms({ member }: { member: Member }) {
   const describe = (t?: T) => !t ? `Chưa có điều khoản: tạm dán giảm giá trước HSD ${cfg.discountDays} ngày`
     : t.needs_review || (t.action === 'return' && !t.days && !t.pct) ? 'Cần chọn: ' + (t.raw_text ?? '').replace(/\n/g, ' / ')
     : t.action === 'return' && t.pct ? `Báo trả khi còn ${t.pct}% hạn dùng (tính từ NSX) + ${cfg.returnBuffer} ngày an toàn`
+    : t.action === 'watch' ? `Không đổi trả, không giảm giá: nhắc khi HSD còn ${t.days} ngày`
     : t.action === 'return' ? `Báo trả trước HSD ${t.days} ngày + ${cfg.returnBuffer} ngày an toàn` : `Không đổi trả: dán giảm giá trước HSD ${cfg.discountDays} ngày`;
   const list = vendors ?? [];
   const missing = list.filter(v => !main(v.id) && !own(v)).length;
@@ -74,7 +75,7 @@ export default function Terms({ member }: { member: Member }) {
               <div className="grow">
                 <div className="lot-name">{v.name}</div>
                 <div className="note num">{v.code.startsWith('TB-') ? 'Chưa có mã NCC' : v.code}</div>
-                <div className={`act ${own(v) ? 'disc' : bad(m) ? 'warn' : m!.action === 'return' ? 'ret' : 'disc'}`} style={{ marginTop: 4 }}>{own(v) ? `Hàng Ân Nam / Annam Gourmet: luôn dán giảm giá trước HSD ${cfg.discountDays} ngày` : describe(m)}</div>
+                <div className={`act ${own(v) ? 'disc' : bad(m) ? 'warn' : m!.action === 'discount' ? 'disc' : 'ret'}`} style={{ marginTop: 4 }}>{own(v) ? `Hàng Ân Nam / Annam Gourmet: luôn dán giảm giá trước HSD ${cfg.discountDays} ngày` : describe(m)}</div>
                 {rules.map(t => <div className="note" key={t.id}>Nhãn {t.brand}: {describe(t)}</div>)}
               </div>
             );
@@ -98,7 +99,7 @@ export function TermEditor({ store, vendor, main, done }: { store: string; vendo
   const [rules, setRules] = useState<Pick<T, 'id' | 'brand' | 'action' | 'days' | 'pct'>[]>([]);
   const [brands, setBrands] = useState<string[]>([]);
   const [brand, setBrand] = useState('');
-  const [action, setAction] = useState<'return' | 'discount'>(main?.action ?? 'return');
+  const [action, setAction] = useState<'return' | 'discount' | 'watch'>(main?.action ?? 'return');
   const [unit, setUnit] = useState<'day' | 'pct'>(main?.pct ? 'pct' : 'day');     // báo trước HSD N ngày, hay khi còn N% hạn dùng
   const [days, setDays] = useState(main?.pct ? String(main.pct) : main?.days ? String(main.days) : '');
   const [msg, setMsg] = useState('');
@@ -121,12 +122,13 @@ export function TermEditor({ store, vendor, main, done }: { store: string; vendo
 
   async function save() {
     const n = parseInt(days);
+    if (action === 'watch' && !(n > 0)) return setMsg('Nhập số ngày trước HSD cần nhắc.');
     if (action === 'return' && !(n > 0)) return setMsg(unit === 'pct' ? 'Nhập phần trăm hạn dùng còn lại.' : 'Nhập số ngày báo trả trước HSD.');
     if (action === 'return' && unit === 'pct' && n > 99) return setMsg('Phần trăm phải từ 1 đến 99.');
-    const what = action !== 'return' ? 'không đổi trả, dán giảm giá' : unit === 'pct' ? `báo trả khi còn ${n}% hạn dùng` : `báo trả trước HSD ${n} ngày`;
+    const what = action === 'watch' ? `chỉ nhắc khi HSD còn ${n} ngày` : action !== 'return' ? 'không đổi trả, dán giảm giá' : unit === 'pct' ? `báo trả khi còn ${n}% hạn dùng` : `báo trả trước HSD ${n} ngày`;
     if (!await ask({ title: `Lưu điều khoản: ${what}?`, body: `Áp dụng cho mọi sản phẩm ${brand ? `nhãn ${brand} ` : ''}của ${vendor.name}, ngày báo của các lô đang theo dõi sẽ tính lại.`, ok: 'Lưu' })) return;
     setBusy(true);
-    const row = { action, days: action === 'return' && unit === 'day' ? n : null, pct: action === 'return' && unit === 'pct' ? n : null, needs_review: false, source: 'manual' };
+    const row = { action, days: action === 'watch' || (action === 'return' && unit === 'day') ? n : null, pct: action === 'return' && unit === 'pct' ? n : null, needs_review: false, source: 'manual' };
     const { error } = cur
       ? await supabase.from('terms').update(row).eq('id', cur.id)
       : await supabase.from('terms').insert({ ...row, store_id: store, vendor_id: vendor.id, brand: brand || null });
@@ -152,7 +154,8 @@ export function TermEditor({ store, vendor, main, done }: { store: string; vendo
       </select>
       <div className="seg" role="group" aria-label="Cách xử lý">
         <button type="button" aria-pressed={action === 'return'} onClick={() => setAction('return')}>Báo trả NCC</button>
-        <button type="button" aria-pressed={action === 'discount'} onClick={() => setAction('discount')}>Không đổi trả</button>
+        <button type="button" aria-pressed={action === 'discount'} onClick={() => setAction('discount')}>Giảm giá</button>
+        <button type="button" aria-pressed={action === 'watch'} onClick={() => { setAction('watch'); if (!days) setDays('10'); }}>Chỉ nhắc</button>
       </div>
       {action === 'return'
         ? <><div className="seg" role="group" aria-label="Tính mốc báo trả">
@@ -162,7 +165,9 @@ export function TermEditor({ store, vendor, main, done }: { store: string; vendo
             <label className="lbl" htmlFor={'td' + vendor.id}>{unit === 'pct' ? 'Báo trả khi lô còn (% hạn dùng, tính từ NSX)' : 'Báo trước HSD (ngày)'}</label>
             <input id={'td' + vendor.id} inputMode="numeric" placeholder={unit === 'pct' ? 'Ví dụ 30' : 'Ví dụ 60 (2 tháng)'} value={days} onChange={e => setDays(e.target.value.replace(/\D/g, '').slice(0, unit === 'pct' ? 2 : 4))} />
             {unit === 'pct' && <p className="note">Khi thêm lô, app sẽ hỏi thêm NSX để tính ngày báo trả.</p>}</>
-        : <p className="note">Dán giảm giá theo mốc trong Cài đặt.</p>}
+        : action === 'watch' ? <><label className="lbl" htmlFor={'tw' + vendor.id}>Không đổi trả, không giảm giá. Nhắc khi HSD còn (ngày)</label>
+            <input id={'tw' + vendor.id} inputMode="numeric" placeholder="Ví dụ 10" value={days} onChange={e => setDays(e.target.value.replace(/\D/g, '').slice(0, 3))} /></>
+        : <p className="note">Không đổi trả: dán giảm giá theo mốc trong Cài đặt.</p>}
       <div className="actions">
         <button className="pri" disabled={busy} onClick={save}>Lưu</button>
         {brand && cur && <button className="danger" disabled={busy} onClick={remove}>Bỏ luật riêng của nhãn</button>}
