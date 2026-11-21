@@ -29,7 +29,7 @@ export default function SyncPanel({ store }: { store: string }) {
       </dl>
       {s.busy && <p className="note">{s.busy}</p>}
       <div className="actions">
-        <button disabled={!s.online || !!s.busy} onClick={() => refreshSnapshot(store)}>Tải lại dữ liệu về máy</button>
+        <button disabled={!s.online || (!!s.busy && !s.busy.startsWith('Lỗi'))} onClick={() => refreshSnapshot(store)}>Tải lại dữ liệu về máy</button>
         <button disabled={!s.online || !s.pending} onClick={() => flush()}>Gửi ngay</button>
       </div>
       {s.failed.length > 0 && (
