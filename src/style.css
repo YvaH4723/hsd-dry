@@ -341,3 +341,5 @@ button.danger-solid { background: #dc2626; color: #fff; }
 @media (prefers-reduced-motion: reduce) { .sheet, .sheet-bg { animation: none; } }
 .shelfrow .grow { display: grid; gap: 1px; }
 .kdot.none { background: transparent; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
+.facts .code { display: inline-flex; align-items: center; gap: 6px; margin-right: 12px; }
+.facts .code .link { background: none; border: 0; padding: 4px 2px; min-height: 0; color: var(--bad, #f87171); font-size: .85em; text-decoration: underline; }

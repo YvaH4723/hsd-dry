@@ -134,6 +134,13 @@ export async function localAddCodes(id: string, codes: string[]) {
   p.barcodes = [...(p.barcodes ?? []), ...codes.map(code => ({ code }))];
   await put('products', products); mem = null;
 }
+export async function localDropCodes(id: string, codes: string[]) {
+  const products = (await get<Product[]>('products')) ?? [];
+  const p = products.find(x => x.id === id);
+  if (!p) return;
+  p.barcodes = (p.barcodes ?? []).filter(b => !codes.includes(b.code));
+  await put('products', products); mem = null;
+}
 export const saveTerms = (terms: Term[], store: unknown) => Promise.all([put('terms', terms), put('store', store)]);
 export const localTerms = async () => ({ terms: (await get<Term[]>('terms')) ?? [], store: await get<any>('store') });
 export const localShelves = async () => (await get<Shelf[]>('shelves')) ?? [];

@@ -4,7 +4,7 @@ import { codeVariants, findByCode, pname, PRODUCT_COLS, searchProducts, useNames
 import { actionFor, termFor } from '../lib/action.ts';
 import { localAddCodes, addBatchOffline, incrBatchOffline, isNet, loadBatches } from '../lib/offline.ts';
 import { daysLeft, fmt, whoLine } from '../lib/dates.ts';
-import ProductInfo, { ProductRow } from '../components/ProductInfo.tsx';
+import ProductInfo, { ProductRow, confirmExtra } from '../components/ProductInfo.tsx';
 import ActionLine from '../components/ActionLine.tsx';
 import Scanner from '../components/Scanner.tsx';
 import DateInput, { type DateVal } from '../components/DateInput.tsx';
@@ -80,6 +80,7 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
   async function attach(p: Product) {
     const code = unknown;
     const rows = (/^\d{11,12}$/.test(code) ? codeVariants(code) : [code]).map(c => ({ store_id: store, product_id: p.id, code: c }));
+    if (!confirmExtra(p, code)) return;
     setBusy(true);
     try {
       const { data, error } = await supabase.from('barcodes').upsert(rows, { onConflict: 'store_id,code', ignoreDuplicates: true }).select('code');

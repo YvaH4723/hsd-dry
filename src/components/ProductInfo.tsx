@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
 import { money, pname, type Product } from '../lib/db.ts';
-import { localAddCodes } from '../lib/offline.ts';
+import { localAddCodes, localDropCodes } from '../lib/offline.ts';
 import { codeVariants, isNet } from '../lib/offline.ts';
 import { canWrite } from '../supabase.ts';
 import Scanner from './Scanner.tsx';
@@ -10,6 +10,9 @@ import { TermEditor } from '../pages/Terms.tsx';
 import Icon from './Icon.tsx';
 
 // Bỏ bản mã có thêm số 0 do app tự tạo cho mã UPC, để danh sách mã gọn.
+// Sản phẩm đã có mã mà gắn thêm mã khác: hỏi lại, vì hay gặp nhất là quét nhầm hộp vị khác cùng hãng.
+export const confirmExtra = (p: Product, code: string) => !p.barcodes?.length || confirm(
+  `"${pname(p)}" đã có mã ${showCodes(p)}.\n\nGắn thêm mã ${code}? Chỉ gắn khi đúng là cùng sản phẩm (bao bì mới, lốc, hộp…). Hộp khác vị / khác cỡ là sản phẩm khác.`);
 export const showCodes = (p: Product) => (p.barcodes ?? []).map(b => b.code).filter((c, _, all) => !all.some(o => o !== c && c === '0' + o)).join(', ') || 'Chưa có mã vạch';
 export const vendorText = (p: Product) => !p.vendors ? 'Chưa có NCC' : p.vendors.code.startsWith('TB-') ? `${p.vendors.name} (chưa có mã NCC)` : `${p.vendors.name} · ${p.vendors.code}`;
 
@@ -52,6 +55,8 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
     setScan(false); setOk(''); setErr('');
     if (!/^\d{6,14}$/.test(code)) return setErr(`"${code}" không phải mã vạch sản phẩm (chỉ gồm 6–14 chữ số). Quét lại mã trên bao bì.`);
     const rows = (/^\d{11,12}$/.test(code) ? codeVariants(code) : [code]).map(c => ({ store_id: member.store_id, product_id: p.id, code: c }));
+    if ((p.barcodes ?? []).some(b => rows.some(r => r.code === b.code))) return setOk(`Mã ${code} đã gắn với sản phẩm này rồi.`);
+    if (!confirmExtra(p, code)) return;
     const { data, error } = await supabase.from('barcodes').upsert(rows, { onConflict: 'store_id,code', ignoreDuplicates: true }).select('code');
     if (error) return setErr(isNet(error) ? 'Đang mất mạng: gắn mã cần có mạng.' : 'Lỗi gắn mã: ' + error.message);
     if (!data?.length) {
@@ -61,6 +66,17 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
     localAddCodes(p.id, data.map(d => d.code as string)).catch(() => {});
     setOk(`Đã gắn mã ${code}. Lần sau quét là ra sản phẩm này.`);
     onChange?.({ ...p, barcodes: [...(p.barcodes ?? []), ...data.map(d => ({ code: d.code as string }))] });
+  }
+  // Gỡ mã gắn nhầm (cả biến thể có / không số 0 đầu của cùng mã).
+  async function drop(code: string) {
+    if (!confirm(`Gỡ mã ${code} khỏi "${pname(p)}"?`)) return;
+    setOk(''); setErr('');
+    const codes = (p.barcodes ?? []).map(b => b.code).filter(c => c === code || c === '0' + code || '0' + c === code);
+    const { error } = await supabase.from('barcodes').delete().eq('store_id', member.store_id).eq('product_id', p.id).in('code', codes);
+    if (error) return setErr(isNet(error) ? 'Đang mất mạng: gỡ mã cần có mạng.' : 'Lỗi gỡ mã: ' + error.message);
+    localDropCodes(p.id, codes).catch(() => {});
+    setOk(`Đã gỡ mã ${code}.`);
+    onChange?.({ ...p, barcodes: (p.barcodes ?? []).filter(b => !codes.includes(b.code)) });
   }
 
   return (
@@ -95,7 +111,9 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
       </div>
       <dl className="facts">
         <dt>NCC</dt><dd>{vendorText(p)}</dd>
-        <dt>Mã vạch</dt><dd className="num">{showCodes(p)}</dd>
+        <dt>Mã vạch</dt><dd className="num">{admin && p.barcodes?.length
+          ? showCodes(p).split(', ').map(c => <span key={c} className="code">{c}<button className="link" aria-label={`Gỡ mã ${c}`} onClick={() => drop(c)}>Gỡ</button></span>)
+          : showCodes(p)}</dd>
       </dl>
       {canWrite(member) && (scan
         ? <><Scanner auto onCode={attach} /><button className="block" onClick={() => setScan(false)}>Hủy quét</button></>
