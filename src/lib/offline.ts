@@ -298,7 +298,7 @@ export function applyOutbox(rows: any[], box: Op[], f: { shelfId?: string; produ
 }
 
 // ---------- khởi động: gửi hàng đợi, tải bản sao nếu cũ hơn 6 giờ ----------
-const STALE = 6 * 3600 * 1000;
+const STALE = 3600 * 1000;      // số tồn đổi mỗi ngày: máy tự tải lại dữ liệu nếu đã quá 1 giờ
 let started = '';
 export async function startSync(store: string) {
   const [box, failed, syncedAt] = await Promise.all([get<Op[]>('outbox'), get<string[]>('failed'), get<number>('syncedAt')]);

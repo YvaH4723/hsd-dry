@@ -7,7 +7,7 @@ import BatchList from '../components/BatchList.tsx';
 import Icon from '../components/Icon.tsx';
 import Scanner from '../components/Scanner.tsx';
 import { LotsLoading } from '../components/Lot.tsx';
-import { localActive, localNoCode } from '../lib/offline.ts';
+import { localActive, localNoCode, useSync } from '../lib/offline.ts';
 
 const SHOW = 200;
 const PAGE = 100;
@@ -34,7 +34,8 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
   const [cat, setCat] = useState<Product[] | null>(null);       // cả danh mục đang bán, hiện sẵn khi chưa gõ tìm
   const [inStock, setInStock] = useState(false);
   const [more, setMore] = useState(PAGE);
-  useEffect(() => { localActive().then(setCat, () => setCat([])); }, [store, rev]);
+  const { syncedAt } = useSync();                            // máy vừa tải dữ liệu mới (sau khi nhập tồn kho…): đọc lại danh sách
+  useEffect(() => { localActive().then(setCat, () => setCat([])); }, [store, rev, syncedAt]);
 
   useEffect(() => {
     supabase.from('products').select('id', { count: 'exact', head: true }).eq('store_id', store).eq('active', true).is('deleted_at', null)
