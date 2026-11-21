@@ -344,3 +344,10 @@ button.danger-solid { background: #dc2626; color: #fff; }
 .facts .code { display: inline-flex; align-items: center; gap: 6px; margin-right: 12px; }
 .facts .code .link { background: none; border: 0; padding: 4px 2px; min-height: 0; color: var(--bad, #f87171); font-size: .85em; text-decoration: underline; }
 #ask-b { white-space: pre-line; }
+
+.stock { flex: none; min-width: 52px; padding: 4px 8px; border-radius: 12px; text-align: center; line-height: 1.1; }
+.stock b { display: block; font-size: 22px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.stock span { font-size: 11px; opacity: .8; }
+.stock.in { background: var(--ok-soft); color: var(--ok); }
+.stock.out { background: var(--bad-soft); color: var(--bad); }
+.facts .stock { display: inline-block; vertical-align: middle; }

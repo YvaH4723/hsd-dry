@@ -19,8 +19,6 @@ export const confirmAttach = (p: Product, code: string) => ask({
     : 'So tên, vị, dung tích trên bao bì với tên ở trên trước khi gắn.'),
   ok: 'Gắn mã',
 });
-// "Tồn 26 · 21/11" (số liệu từ file Stock On Hand nhập gần nhất).
-export const stockText = (p: Product) => p.stock_qty == null ? '' : `Tồn ${Number(p.stock_qty).toLocaleString('vi-VN')}${p.stock_at ? ' · ' + new Date(p.stock_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : ''}`;
 export const showCodes = (p: Product) => (p.barcodes ?? []).map(b => b.code).filter((c, _, all) => !all.some(o => o !== c && c === '0' + o)).join(', ') || 'Chưa có mã vạch';
 export const vendorText = (p: Product) => !p.vendors ? 'Chưa có NCC' : p.vendors.code.startsWith('TB-') ? `${p.vendors.name} (chưa có mã NCC)` : `${p.vendors.name} · ${p.vendors.code}`;
 
@@ -32,13 +30,20 @@ export function ProductRow({ p, onClick }: { p: Product; onClick: () => void }) 
         <div className="grow">
           <div className="lot-name">{pname(p)}</div>
           {p.name_vi && <div className="note">{p.name}</div>}
-          <div className="note num">{[p.ax_code, p.brand, money(p.price), stockText(p)].filter(Boolean).join(' · ')}</div>
+          <div className="note num">{[p.ax_code, p.brand, money(p.price)].filter(Boolean).join(' · ')}</div>
           <div className="note">NCC: {vendorText(p)}{!p.active && <span className="warn"> · không có trong Cadencia</span>}</div>
         </div>
+        {p.stock_qty != null && <StockBadge p={p} />}
         <Icon name="chev" size={18} />
       </button>
     </div>
   );
+}
+
+// Số tồn to, dễ thấy ở bên phải dòng: xanh khi còn hàng, đỏ khi hết (hoặc âm).
+export function StockBadge({ p }: { p: Product }) {
+  const q = Number(p.stock_qty);
+  return <div className={`stock ${q > 0 ? 'in' : 'out'}`}><b>{q.toLocaleString('vi-VN')}</b><span>tồn</span></div>;
 }
 
 // Thẻ thông tin sản phẩm: hiện ngay khi quét / gõ mã. Quản trị viên sửa được tên tiếng Việt, điều khoản NCC,
@@ -119,7 +124,7 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
       </div>
       <dl className="facts">
         <dt>NCC</dt><dd>{vendorText(p)}</dd>
-        {p.stock_qty != null && <><dt>Tồn kho</dt><dd className="num">{stockText(p).replace('Tồn ', '')}</dd></>}
+        {p.stock_qty != null && <><dt>Tồn kho</dt><dd className="num"><StockBadge p={p} /> <span className="note">số liệu {p.stock_at ? new Date(p.stock_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : ''}</span></dd></>}
         <dt>Mã vạch</dt><dd className="num">{admin && p.barcodes?.length
           ? showCodes(p).split(', ').map(c => <span key={c} className="code">{c}<button className="link" aria-label={`Gỡ mã ${c}`} onClick={() => drop(c)}>Gỡ</button></span>)
           : showCodes(p)}</dd>
