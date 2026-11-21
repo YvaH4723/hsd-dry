@@ -6,7 +6,7 @@ const mapAll = (rows: Record<string, unknown>[]) => rows.map(mapRow).filter(i =>
 import { resolveVendors, type VendorTerm } from '../lib/terms.ts';
 import { fetchAll, reloadTerms } from '../lib/db.ts';
 import { refreshSnapshot } from '../lib/offline.ts';
-import { parseStock, STOCK_COL, type StockFile } from '../lib/stock.ts';
+import { mine, parseStock, STOCK_COLS, type Known, type StockFile } from '../lib/stock.ts';
 
 const chunks = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 
@@ -230,25 +230,27 @@ function ContactImport({ store }: { store: string }) {
   );
 }
 
-// Stock On Hand (D365): cập nhật số tồn cho sản phẩm quầy Dry của một kho, thêm sản phẩm còn tồn mà app chưa có.
-// Không đụng tên, giá, NCC, lô HSD của sản phẩm đã có.
+// Tồn kho (file On-hand inventory hoặc Stock On Hand của D365): cập nhật số tồn hàng quầy Dry của một kho,
+// thêm sản phẩm còn tồn mà app chưa có. Không đụng tên, giá, NCC, lô HSD của sản phẩm đã có.
 const WH_KEY = 'hsd.stock-wh';
 function StockImport({ store }: { store: string }) {
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
-  const [wh, setWh] = useState(() => localStorage.getItem(WH_KEY) || 'RGSHN');
-  const [have, setHave] = useState<Set<string>>(new Set());
+  const [wh, setWh] = useState(() => localStorage.getItem(WH_KEY) || 'RGSTBP');
+  const [known, setKnown] = useState<Map<string, Known>>(new Map());
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
   const f: StockFile | null = rows && parseStock(rows, wh);
-  const added = f ? f.items.filter(i => i.qty > 0 && !have.has(i.ax)) : [];
+  const my = f ? f.items.filter(i => mine(i, known.get(i.ax))) : [];
+  const added = my.filter(i => i.qty > 0 && !known.has(i.ax));
+  const unsure = f && !f.hasCat ? f.items.filter(i => i.qty > 0 && !known.has(i.ax) && !mine(i)).length : 0;
 
   async function pick(file?: File) {
     if (!file) return;
-    setBusy(true); setRows(null); setMsg('Đang đọc file (file lớn có thể mất nửa phút)…');
+    setBusy(true); setRows(null); setMsg('Đang đọc file…');
     try {
-      const r = await readRows(file, STOCK_COL, 'Stock On Hand');
-      const ex = await fetchAll<{ ax_code: string }>((a, b) => supabase.from('products').select('ax_code').eq('store_id', store).not('ax_code', 'is', null).order('ax_code').range(a, b));
-      setHave(new Set(ex.map(e => e.ax_code.trim().toUpperCase())));
+      const r = await readRows(file, STOCK_COLS, 'On-hand inventory / Stock On Hand');
+      const ex = await fetchAll<{ ax_code: string; active: boolean; dept_group: string | null }>((a, b) => supabase.from('products').select('ax_code,active,dept_group').eq('store_id', store).not('ax_code', 'is', null).is('deleted_at', null).order('ax_code').range(a, b));
+      setKnown(new Map(ex.map(e => [e.ax_code.trim().toUpperCase(), e])));
       const whs = parseStock(r, wh).warehouses;
       if (whs.length && !whs.includes(wh)) setWh(whs[0]);
       setRows(r); setMsg('');
@@ -267,15 +269,15 @@ function StockImport({ store }: { store: string }) {
         const vid = new Map(vs.map(v => [v.code.replace(/\s+/g, '').toUpperCase(), v.id]));
         for (const c of chunks(added, 500)) {
           const { error } = await supabase.from('products').upsert(c.map(i => ({
-            store_id: store, ax_code: i.ax, name: i.name, name_search: i.nameSearch, vendor_id: vid.get(i.vendorCode) ?? null,
-            dept_group: i.group || null, category: i.category, active: false,
+            store_id: store, ax_code: i.ax, name: i.name, name_search: i.nameSearch, brand: i.brand || null, vendor_id: vid.get(i.vendorCode) ?? null,
+            dept_group: i.group || null, category: i.category || 'Từ file tồn kho', active: false,
           })), { onConflict: 'store_id,ax_code', ignoreDuplicates: true });
           if (error) throw error;
         }
       }
       let n = 0;
-      for (const [k, c] of chunks(f.items, 2000).entries()) {
-        setMsg(`Đang ghi số tồn ${Math.min((k + 1) * 2000, f.items.length)}/${f.items.length}…`);
+      for (const [k, c] of chunks(my, 2000).entries()) {
+        setMsg(`Đang ghi số tồn ${Math.min((k + 1) * 2000, my.length)}/${my.length}…`);
         const { data, error } = await supabase.rpc('set_stock', { p_store: store, p_rows: c.map(i => ({ ax: i.ax, q: i.qty })) });
         if (error) throw error;
         n += data ?? 0;
@@ -290,9 +292,9 @@ function StockImport({ store }: { store: string }) {
 
   return (
     <div className="panel">
-      <h2>Tồn kho (Stock On Hand)</h2>
-      <p className="note">File xuất từ hệ thống cửa hàng (có cột Product ID). Chỉ lấy hàng quầy Dry (Dry Food, Non-Food) của kho đã chọn; bỏ Fresh, Beverage, thu ngân, lounge. Cập nhật số tồn, thêm sản phẩm còn tồn mà app chưa có. Không sửa tên, giá, NCC, lô HSD.</p>
-      <input type="file" accept=".xlsx,.xls" aria-label="Chọn file Stock On Hand" disabled={busy} onChange={e => { pick(e.target.files?.[0]); e.target.value = ''; }} />
+      <h2>Tồn kho</h2>
+      <p className="note">File On-hand inventory (cột Item number) hoặc Stock On Hand (cột Product ID) xuất từ hệ thống cửa hàng. Chỉ lấy hàng quầy Dry (Dry Food, Non-Food) của kho đã chọn; bỏ Fresh, Beverage, thu ngân, lounge. Cập nhật số tồn, thêm sản phẩm còn tồn mà app chưa có. Không sửa tên, giá, NCC, lô HSD.</p>
+      <input type="file" accept=".xlsx,.xls" aria-label="Chọn file tồn kho" disabled={busy} onChange={e => { pick(e.target.files?.[0]); e.target.value = ''; }} />
       {f && (
         <>
           {f.warehouses.length > 1 && (
@@ -300,15 +302,16 @@ function StockImport({ store }: { store: string }) {
               <select value={wh} onChange={e => setWh(e.target.value)}>{f.warehouses.map(w => <option key={w}>{w}</option>)}</select>
             </label>
           )}
-          {f.truncated && <p className="msg warn">File bị cắt bớt: hệ thống chỉ xuất tối đa một số dòng nên có thể thiếu sản phẩm. Khi xuất, lọc chỉ kho {wh} (và nhóm Dry Food, Non-Food) để file đủ.</p>}
+          {f.truncated && <p className="msg warn">File bị cắt bớt: hệ thống chỉ xuất tối đa một số dòng nên có thể thiếu sản phẩm. Khi xuất, lọc chỉ kho {wh} để file đủ.</p>}
           <div className="stats">
-            <div><b>{f.items.length}</b>SP quầy Dry</div>
-            <div><b className="ok">{f.items.filter(i => i.qty > 0).length}</b>Còn tồn</div>
+            <div><b>{my.length}</b>SP quầy Dry</div>
+            <div><b className="ok">{my.filter(i => i.qty > 0).length}</b>Còn tồn</div>
             <div><b className="ok">{added.length}</b>Thêm mới</div>
-            <div><b className="mute">{f.other}</b>Dòng quầy khác (bỏ)</div>
+            <div><b className="mute">{(f.items.length - my.length) + f.other}</b>Quầy khác (bỏ)</div>
           </div>
+          {unsure > 0 && <p className="note">{unsure} sản phẩm còn tồn chưa có trong app và file không ghi nhóm hàng (thường là Fresh, đồ uống) nên không thêm.</p>}
           {added.slice(0, 10).map(i => <p className="note" key={i.ax}>Thêm: {i.ax} {i.name} · tồn {i.qty}</p>)}
-          <button className="pri block" disabled={busy || !f.items.length} onClick={apply}>Xác nhận ghi</button>
+          <button className="pri block" disabled={busy || !my.length} onClick={apply}>Xác nhận ghi</button>
         </>
       )}
       {msg && <p className={msg.startsWith('Lỗi') ? 'msg bad' : 'note'}>{msg}</p>}

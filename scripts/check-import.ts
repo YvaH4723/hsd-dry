@@ -145,6 +145,16 @@ console.log('Quy tắc: OK');
   assert.ok(s.items.length === 2 && f1.qty === 15 && f1.group === 'sweet' && f1.category === 'SWEET GROCERY' && f1.vendorCode === 'AFF01', 'stock: Dry + gộp lô');
   assert.ok(s.items.some(i => i.ax === 'H1'), 'stock: lấy Non-Food');
   assert.ok(s.truncated && s.other === 3 && s.warehouses.join() === 'RGSHN,RGSVLB', 'stock: cảnh báo file bị cắt, đếm hàng quầy khác');
+  const { mine } = await import('../src/lib/stock.ts');
+  const oh = parseStock([
+    { 'Item number': 'F9', 'Product name': 'Dry snack', Warehouse: 'RGSTBP', 'Physical inventory': 4, 'Brand Description': 'X' },
+    { 'Item number': 'F8', 'Product name': 'Fresh milk', Warehouse: 'RGSTBP', 'Physical inventory': 2 },
+    { 'Item number': 'H7', 'Product name': 'Shampoo', Warehouse: 'RGSTBP', 'Physical inventory': 1 },
+  ], 'RGSTBP');
+  const [f9, f8, h7] = oh.items;
+  assert.ok(!oh.hasCat && f9.dry === null && f9.brand === 'X', 'on-hand: không có nhóm hàng');
+  assert.ok(mine(f9, { active: false, dept_group: 'sweet' }) && !mine(f8, { active: false, dept_group: null }) && mine(f8, { active: true, dept_group: null }), 'on-hand: theo danh mục app');
+  assert.ok(!mine(f8) && mine(h7), 'on-hand: SP mới chỉ nhận hàng không thực phẩm');
   console.log('stock ok');
 }
 
