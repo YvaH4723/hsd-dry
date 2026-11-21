@@ -21,7 +21,7 @@ assert.equal(t(null), 'discount:null');
 assert.equal(t('Yes - Food: 36days - NF: 216 days'), 'return:36');
 assert.equal(t('No - Food: 30 days'), 'review');
 assert.equal(t('Fresh food: 3 days, Dry food: 90 days'), 'review');
-for (const v of ['Yes - 65% remaining', 'Yes', '3 tháng trở lên', 'Fresh milk: 30d\nPowder milk: 90d', '120 days (Monge 1 năm)', 'Yes - < 6 months'])
+for (const v of ['Yes', '3 tháng trở lên', 'Fresh milk: 30d\nPowder milk: 90d', '120 days (Monge 1 năm)', 'Yes - < 6 months'])
   assert.equal(t(v), 'review', v);
 assert.deepEqual(barcodesOf('Undefined'), []);
 assert.deepEqual(barcodesOf('39978009524'), ['39978009524', '039978009524', '0039978009524']);
@@ -63,7 +63,16 @@ assert.equal(daysLeft('2026-11-20', new Date(2026, 10, 15, 23, 59)), 5);
   assert.equal(actionFor({ expiry_date: '2027-01-01', expiry_note: 'action_date' }, P('Twinings'), C5).date, '2027-01-01');
   assert.equal(actionFor({ ...lot, no_return: true }, P('Twinings'), C5).kind, 'discount');                  // lô không đổi trả: chỉ giảm giá
   assert.equal(actionFor({ ...lot, no_return: true }, P('Twinings'), C5).date, '2027-02-14');                 // HSD − 45, không cộng 5
-  assert.equal(actionFor({ ...lot, no_return: false }, P('Twinings'), C0).kind, 'return');                    // tắt: về điều khoản NCC
+  assert.equal(actionFor({ ...lot, no_return: false }, P('Twinings'), C0).kind, 'return');
+  { // % hạn dùng: NSX 20/04/2026, HSD 19/04/2029 (1095 ngày), còn 30% = 329 ngày, + 5 an toàn
+    const { parseTerm: pt } = await import('../src/lib/terms.ts');
+    assert.equal(pt('30% shelf life').pct, 30); assert.equal(pt('Yes - 65% remaining').pct, 65);
+    assert.equal(pt('Yes - 60% expiry date').review, true);                                                  // câu lạ: vẫn cần xem
+    const cp = { ...C5, idx: indexTerms([{ vendor_id: 'PS', brand: null, product_id: null, action: 'return', days: null, pct: 30, raw_text: '30% shelf life', needs_review: false }]) };
+    const pp = P(null, 'k1', { vendor_id: 'PS' });
+    assert.equal(actionFor({ expiry_date: '2029-04-19', expiry_note: null, mfg_date: '2026-04-20' }, pp, cp).date, '2028-05-20');
+    assert.equal(actionFor({ expiry_date: '2029-04-19', expiry_note: null }, pp, cp).needMfg, true);          // thiếu NSX: nhắc nhập
+  }                    // tắt: về điều khoản NCC
 }
 { // ghép dữ liệu máy chủ với thay đổi đang chờ gửi
   const rows = [{ id: 'a', expiry_date: '2027-02-01', status: 'on_shelf', shelf_id: 'k1', products: { id: 'p1' } },

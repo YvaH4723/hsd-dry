@@ -4,7 +4,7 @@ import { useShelves, useTerms, useZones, zoneFilter, type Shelf } from '../lib/d
 import ZoneChips from './ZoneChips.tsx';
 import LotSearchBar, { useLotSearch } from './LotSearch.tsx';
 import { loadBatches, updateBatchOffline } from '../lib/offline.ts';
-import { actionFor } from '../lib/action.ts';
+import { actionFor, termFor } from '../lib/action.ts';
 import { daysLeft, fmt } from '../lib/dates.ts';
 import DateInput, { type DateVal } from './DateInput.tsx';
 import LotInfo, { LotsLoading, type LotRow } from './Lot.tsx';
@@ -52,7 +52,7 @@ export default function BatchList({ member, shelfId, productId, rev }: { member:
         {canWrite(member)
           ? <button className="li-main" aria-expanded={edit === b.id} onClick={() => setEdit(edit === b.id ? null : b.id)}>{info}</button>
           : <div className="li-body">{info}</div>}
-        {edit === b.id && <Editor b={b} member={member} shelves={shelves} done={() => { setEdit(null); load(); }} />}
+        {edit === b.id && <Editor b={b} pct={terms ? termFor(b.products, terms.idx).pct ?? null : null} member={member} shelves={shelves} done={() => { setEdit(null); load(); }} />}
       </div>
     );
   };
@@ -124,7 +124,7 @@ export default function BatchList({ member, shelfId, productId, rev }: { member:
   );
 }
 
-function Editor({ b, member, shelves, done }: { b: LotRow; member: Member; shelves: Shelf[]; done: () => void }) {
+function Editor({ b, pct, member, shelves, done }: { b: LotRow; pct: number | null; member: Member; shelves: Shelf[]; done: () => void }) {
   const noHsd = b.expiry_note === 'action_date';
   const [qty, setQty] = useState(String(b.qty));
   const [shelf, setShelf] = useState(b.shelf_id ?? '');
@@ -141,12 +141,12 @@ function Editor({ b, member, shelves, done }: { b: LotRow; member: Member; shelv
   async function upd(patch: Record<string, unknown>, action: string) {
     setBusy(true);
     try {
-      const view = { ...('shelf_id' in patch ? { shelves: shelves.find(s => s.id === patch.shelf_id) ?? null } : {}), ...('no_return' in patch ? { no_return: patch.no_return } : {}) };
+      const view = { ...('shelf_id' in patch ? { shelves: shelves.find(s => s.id === patch.shelf_id) ?? null } : {}), ...('no_return' in patch ? { no_return: patch.no_return } : {}), ...('mfg_date' in patch ? { mfg_date: patch.mfg_date } : {}) };
       await updateBatchOffline(member.store_id, b.id, patch, action, before, view, b.updated_at);
       done();
     } catch (e: any) { setMsg('Chưa lưu được: ' + e.message); setBusy(false); }
   }
-  const save = () => upd({ qty: n, shelf_id: shelf || null, expiry_date: exp, ...(exp !== b.expiry_date ? { mfg_date: date.mfg } : {}), ...(clearNote ? { expiry_note: null } : {}), ...(noRet !== !!b.no_return ? { no_return: noRet } : {}) }, 'edit');
+  const save = () => upd({ qty: n, shelf_id: shelf || null, expiry_date: exp, ...(date.mfg !== (b.mfg_date ?? null) && (date.mfg || exp !== b.expiry_date) ? { mfg_date: date.mfg } : {}), ...(clearNote ? { expiry_note: null } : {}), ...(noRet !== !!b.no_return ? { no_return: noRet } : {}) }, 'edit');
 
   return (
     <div className="li-edit">
@@ -165,7 +165,7 @@ function Editor({ b, member, shelves, done }: { b: LotRow; member: Member; shelv
       {n === 0 && <p className="note warn">Hết hàng thì bấm Bán hết thay vì để số lượng 0.</p>}
       <label className="lbl">{noHsd ? 'HSD in trên bao bì' : 'Hạn sử dụng'}</label>
       {noHsd && <p className="note">Đang lưu ngày nhắc {fmt(b.expiry_date)} từ ExpiryDay. Nhập HSD thật để app tính đúng ngày báo trả, giảm giá.</p>}
-      <DateInput initial={noHsd ? undefined : b.expiry_date} onChange={setDate} />
+      <DateInput initial={noHsd ? undefined : b.expiry_date} initialMfg={b.mfg_date} needMfg={!!pct} onChange={setDate} />
       {b.expiry_note === 'estimated' && (
         <label className="check"><input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} />HSD này đúng với bao bì (bỏ chữ ước tính)</label>
       )}

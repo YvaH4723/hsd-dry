@@ -191,7 +191,7 @@ function ContactImport({ store }: { store: string }) {
       const old = await fetchAll<{ id: string; vendor_id: string; source: string }>((a, b) => supabase.from('terms').select('id,vendor_id,source').eq('store_id', store)
         .is('brand', null).is('product_id', null).is('deleted_at', null).order('id').range(a, b));
       const cur = new Map(old.map(t => [t.vendor_id, t]));
-      const rows = vt.map(v => ({ store_id: store, vendor_id: vid.get(v.code)!, action: v.action, days: v.days, raw_text: v.raw, needs_review: v.review, source: 'file' }));
+      const rows = vt.map(v => ({ store_id: store, vendor_id: vid.get(v.code)!, action: v.action, days: v.days, pct: v.pct, raw_text: v.raw, needs_review: v.review, source: 'file' }));
       const kept = rows.filter(r => cur.get(r.vendor_id)?.source === 'manual').length;
       const upd = rows.filter(r => cur.get(r.vendor_id)?.source === 'file').map(r => ({ ...r, id: cur.get(r.vendor_id)!.id }));
       const ins = rows.filter(r => !cur.has(r.vendor_id));

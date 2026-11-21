@@ -9,7 +9,7 @@ import Icon from '../components/Icon.tsx';
 import { LotsLoading } from '../components/Lot.tsx';
 import { ask } from '../components/Ask.tsx';
 
-interface T { id: string; vendor_id: string; brand: string | null; product_id: string | null; action: 'return' | 'discount'; days: number | null; raw_text: string | null; needs_review: boolean; source: string }
+interface T { id: string; vendor_id: string; brand: string | null; product_id: string | null; action: 'return' | 'discount'; days: number | null; pct?: number | null; raw_text: string | null; needs_review: boolean; source: string }
 interface V { id: string; code: string; name: string }
 type Mode = 'all' | 'missing' | 'review';
 const same = (a: string | null, b: string | null) => (a ?? '').trim().toLowerCase() === (b ?? '').trim().toLowerCase();
@@ -28,16 +28,17 @@ export default function Terms({ member }: { member: Member }) {
 
   const load = () => Promise.all([
     fetchAll<V>((a, b) => supabase.from('vendors').select('id,code,name').eq('store_id', store).is('deleted_at', null).order('code').range(a, b)),
-    fetchAll<T>((a, b) => supabase.from('terms').select('id,vendor_id,brand,product_id,action,days,raw_text,needs_review,source').eq('store_id', store).is('deleted_at', null).order('id').range(a, b)),
+    fetchAll<T>((a, b) => supabase.from('terms').select('id,vendor_id,brand,product_id,action,days,pct,raw_text,needs_review,source').eq('store_id', store).is('deleted_at', null).order('id').range(a, b)),
     supabase.from('stores').select('*').eq('id', store).single(),
   ]).then(([v, t, s]) => { setVendors(v); setTerms(t); setCfg(settingsOf(s.data)); setErr(''); }, e => setErr(errText(e)));
   useEffect(() => { load(); }, [store]);
 
   const main = (v: string) => terms.find(t => t.vendor_id === v && !t.brand && !t.product_id);
-  const bad = (t?: T) => !t || t.needs_review || (t.action === 'return' && !t.days);
+  const bad = (t?: T) => !t || t.needs_review || (t.action === 'return' && !t.days && !t.pct);
   const own = (v: V) => OWN_BRAND.has(normVendor(v.code));          // Ân Nam, Annam Gourmet: luôn dán giảm giá, không cần điều khoản
   const describe = (t?: T) => !t ? `Chưa có điều khoản: tạm dán giảm giá trước HSD ${cfg.discountDays} ngày`
-    : t.needs_review || (t.action === 'return' && !t.days) ? 'Cần chọn: ' + (t.raw_text ?? '').replace(/\n/g, ' / ')
+    : t.needs_review || (t.action === 'return' && !t.days && !t.pct) ? 'Cần chọn: ' + (t.raw_text ?? '').replace(/\n/g, ' / ')
+    : t.action === 'return' && t.pct ? `Báo trả khi còn ${t.pct}% hạn dùng (tính từ NSX) + ${cfg.returnBuffer} ngày an toàn`
     : t.action === 'return' ? `Báo trả trước HSD ${t.days} ngày + ${cfg.returnBuffer} ngày an toàn` : `Không đổi trả: dán giảm giá trước HSD ${cfg.discountDays} ngày`;
   const list = vendors ?? [];
   const missing = list.filter(v => !main(v.id) && !own(v)).length;
@@ -93,19 +94,20 @@ export default function Terms({ member }: { member: Member }) {
 }
 
 // Sửa điều khoản của một NCC (cả NCC hoặc riêng một nhãn hàng). Dùng ở trang Điều khoản và ngay trên thẻ sản phẩm khi quét.
-export function TermEditor({ store, vendor, main, done }: { store: string; vendor: V; main?: Pick<T, 'action' | 'days' | 'raw_text'>; done: () => void }) {
-  const [rules, setRules] = useState<Pick<T, 'id' | 'brand' | 'action' | 'days'>[]>([]);
+export function TermEditor({ store, vendor, main, done }: { store: string; vendor: V; main?: Pick<T, 'action' | 'days' | 'pct' | 'raw_text'>; done: () => void }) {
+  const [rules, setRules] = useState<Pick<T, 'id' | 'brand' | 'action' | 'days' | 'pct'>[]>([]);
   const [brands, setBrands] = useState<string[]>([]);
   const [brand, setBrand] = useState('');
   const [action, setAction] = useState<'return' | 'discount'>(main?.action ?? 'return');
-  const [days, setDays] = useState(main?.days ? String(main.days) : '');
+  const [unit, setUnit] = useState<'day' | 'pct'>(main?.pct ? 'pct' : 'day');     // báo trước HSD N ngày, hay khi còn N% hạn dùng
+  const [days, setDays] = useState(main?.pct ? String(main.pct) : main?.days ? String(main.days) : '');
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     fetchAll<{ brand: string }>((a, b) => supabase.from('products').select('brand').eq('vendor_id', vendor.id).not('brand', 'is', null).order('id').range(a, b))
       .then(data => setBrands([...new Set(data.map(p => p.brand))].sort()), () => {});
-    supabase.from('terms').select('id,brand,action,days').eq('store_id', store).eq('vendor_id', vendor.id).is('product_id', null).is('deleted_at', null)
+    supabase.from('terms').select('id,brand,action,days,pct').eq('store_id', store).eq('vendor_id', vendor.id).is('product_id', null).is('deleted_at', null)
       .then(({ data }) => setRules((data as typeof rules) ?? []));
   }, [vendor.id]);
 
@@ -114,14 +116,15 @@ export function TermEditor({ store, vendor, main, done }: { store: string; vendo
   function pick(b: string) {
     setBrand(b); setMsg('');
     const r = rules.find(x => same(x.brand, b || null)) ?? rules.find(x => !x.brand) ?? main;
-    setAction(r?.action ?? 'return'); setDays(r?.days ? String(r.days) : '');
+    setAction(r?.action ?? 'return'); setUnit(r?.pct ? 'pct' : 'day'); setDays(r?.pct ? String(r.pct) : r?.days ? String(r.days) : '');
   }
 
   async function save() {
     const n = parseInt(days);
-    if (action === 'return' && !(n > 0)) return setMsg('Nhập số ngày báo trả trước HSD.');
+    if (action === 'return' && !(n > 0)) return setMsg(unit === 'pct' ? 'Nhập phần trăm hạn dùng còn lại.' : 'Nhập số ngày báo trả trước HSD.');
+    if (action === 'return' && unit === 'pct' && n > 99) return setMsg('Phần trăm phải từ 1 đến 99.');
     setBusy(true);
-    const row = { action, days: action === 'return' ? n : null, needs_review: false, source: 'manual' };
+    const row = { action, days: action === 'return' && unit === 'day' ? n : null, pct: action === 'return' && unit === 'pct' ? n : null, needs_review: false, source: 'manual' };
     const { error } = cur
       ? await supabase.from('terms').update(row).eq('id', cur.id)
       : await supabase.from('terms').insert({ ...row, store_id: store, vendor_id: vendor.id, brand: brand || null });
@@ -150,8 +153,13 @@ export function TermEditor({ store, vendor, main, done }: { store: string; vendo
         <button type="button" aria-pressed={action === 'discount'} onClick={() => setAction('discount')}>Không đổi trả</button>
       </div>
       {action === 'return'
-        ? <><label className="lbl" htmlFor={'td' + vendor.id}>Báo trước HSD (ngày)</label>
-            <input id={'td' + vendor.id} inputMode="numeric" placeholder="Ví dụ 60 (2 tháng)" value={days} onChange={e => setDays(e.target.value.replace(/\D/g, '').slice(0, 4))} /></>
+        ? <><div className="seg" role="group" aria-label="Tính mốc báo trả">
+              <button type="button" aria-pressed={unit === 'day'} onClick={() => setUnit('day')}>Số ngày trước HSD</button>
+              <button type="button" aria-pressed={unit === 'pct'} onClick={() => setUnit('pct')}>Còn % hạn dùng</button>
+            </div>
+            <label className="lbl" htmlFor={'td' + vendor.id}>{unit === 'pct' ? 'Báo trả khi lô còn (% hạn dùng, tính từ NSX)' : 'Báo trước HSD (ngày)'}</label>
+            <input id={'td' + vendor.id} inputMode="numeric" placeholder={unit === 'pct' ? 'Ví dụ 30' : 'Ví dụ 60 (2 tháng)'} value={days} onChange={e => setDays(e.target.value.replace(/\D/g, '').slice(0, unit === 'pct' ? 2 : 4))} />
+            {unit === 'pct' && <p className="note">Khi thêm lô, app sẽ hỏi thêm NSX để tính ngày báo trả.</p>}</>
         : <p className="note">Dán giảm giá theo mốc trong Cài đặt.</p>}
       <div className="actions">
         <button className="pri" disabled={busy} onClick={save}>Lưu</button>

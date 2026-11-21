@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
 import { codeVariants, findByCode, pname, PRODUCT_COLS, searchProducts, useNames, useShelves, useTerms, type Product } from '../lib/db.ts';
-import { actionFor } from '../lib/action.ts';
+import { actionFor, termFor } from '../lib/action.ts';
 import { localAddCodes, addBatchOffline, incrBatchOffline, isNet, loadBatches } from '../lib/offline.ts';
 import { daysLeft, fmt, whoLine } from '../lib/dates.ts';
 import ProductInfo, { ProductRow } from '../components/ProductInfo.tsx';
@@ -180,12 +180,12 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
           <button type="button" aria-label="Thêm 1" onClick={() => setQty(String(n + 1))}><Icon name="plus" /></button>
         </div>
         <label className="lbl">Hạn sử dụng</label>
-        <DateInput key={dateKey} onChange={setDate} />
+        <DateInput key={dateKey} onChange={setDate} needMfg={!!(product && terms && termFor(product, terms.idx).pct)} />
         {product && <label className="check"><input type="checkbox" checked={noRet} onChange={e => setNoRet(e.target.checked)} />Lô này không đổi trả, chỉ dán giảm giá</label>}
       </div>
 
       <div className="savebar">
-        {product && date.exp && terms && <ActionLine a={actionFor({ expiry_date: date.exp, expiry_note: null, no_return: noRet }, product, terms)} status="on_shelf" />}
+        {product && date.exp && terms && <ActionLine a={actionFor({ expiry_date: date.exp, expiry_note: null, no_return: noRet, mfg_date: date.mfg }, product, terms)} status="on_shelf" />}
         {same && (
           <p className="note warn">
             Đã có lô cùng HSD {sh?.id === same.shelf_id ? 'trên kệ này' : same.shelves ? 'trên ' + same.shelves.name : 'chưa gắn kệ'} (SL {same.qty}).

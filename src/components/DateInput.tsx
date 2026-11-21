@@ -13,15 +13,16 @@ const typing = (s: string) => {
 const back = (old: string, v: string) => v.length < old.length && v.replace(/\D/g, '') === old.replace(/\D/g, '') ? typing(v.replace(/\D/g, '').slice(0, -1)) : typing(v);
 
 // Nhập HSD (ddmmyy) hoặc NSX + hạn N tháng/ngày. Nhớ cách nhập lần trước.
-export default function DateInput({ onChange, initial }: { onChange: (v: DateVal) => void; initial?: string }) {
+// needMfg: điều khoản tính theo % hạn dùng, ở chế độ Có HSD hỏi thêm NSX.
+export default function DateInput({ onChange, initial, initialMfg, needMfg = false }: { onChange: (v: DateVal) => void; initial?: string; initialMfg?: string | null; needMfg?: boolean }) {
   const [mode, setMode] = useState<'hsd' | 'nsx'>(() => { try { return !initial && localStorage.getItem(MODE) === 'nsx' ? 'nsx' : 'hsd'; } catch { return 'hsd'; } });
   const [hsd, setHsd] = useState(initial ? typing(fmt(initial).replace(/\/(\d\d)(\d\d)$/, '/$2')) : '');   // 30/06/28: xóa bớt năm không thành năm 2020
-  const [nsx, setNsx] = useState('');
+  const [nsx, setNsx] = useState(initialMfg ? typing(fmt(initialMfg)) : '');
   const [n, setN] = useState('');
   const [unit, setUnit] = useState<'month' | 'day'>('month');
 
   const calc = (m = mode, h = hsd, x = nsx, nn = n, u = unit): DateVal => {
-    if (m === 'hsd') return { exp: parseDmy(h), mfg: null, empty: !h };
+    if (m === 'hsd') return { exp: parseDmy(h), mfg: needMfg && x ? parseDmy(x) : null, empty: !h };
     const mfg = parseDmy(x);
     return { exp: mfg && +nn > 0 ? addShelfLife(mfg, +nn, u) : null, mfg, empty: !x && !nn };
   };
@@ -40,7 +41,10 @@ export default function DateInput({ onChange, initial }: { onChange: (v: DateVal
         <button type="button" aria-pressed={mode === 'nsx'} onClick={() => upd({ m: 'nsx' })}>NSX + hạn dùng</button>
       </div>
       {mode === 'hsd' ? (
-        <input inputMode="numeric" aria-label="Hạn sử dụng" placeholder="dd/mm/yy" value={hsd} onChange={e => upd({ h: back(hsd, e.target.value) })} />
+        <>
+          <input inputMode="numeric" aria-label="Hạn sử dụng" placeholder="dd/mm/yy" value={hsd} onChange={e => upd({ h: back(hsd, e.target.value) })} />
+          {needMfg && <input style={{ marginTop: 8 }} inputMode="numeric" aria-label="Ngày sản xuất" placeholder="NSX dd/mm/yy (cần để tính % hạn dùng)" value={nsx} onChange={e => upd({ x: back(nsx, e.target.value) })} />}
+        </>
       ) : (
         <>
           <input inputMode="numeric" aria-label="Ngày sản xuất" placeholder="NSX dd/mm/yy" value={nsx} onChange={e => upd({ x: back(nsx, e.target.value) })} />

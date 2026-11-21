@@ -90,7 +90,7 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
   // Chưa rõ điều khoản mà HSD đã gần: có thể NCC cho trả hàng sớm hơn mốc giảm giá 45 ngày, cần đặt điều khoản ngay.
   const shownIds = new Set(groups.flatMap(g => g.items.map(x => x.l.id)));
   groups.push({ key: 'unclear', title: 'Chưa rõ điều khoản, HSD dưới 120 ngày', tone: 'disc', tile: 'disc',
-    items: open0.filter(x => x.a.kind === 'discount' && x.a.label && daysLeft(x.l.expiry_date) <= 120 && !shownIds.has(x.l.id)).sort(byDate)
+    items: open0.filter(x => x.a.kind === 'discount' && x.a.label && (daysLeft(x.l.expiry_date) <= 120 || x.a.needMfg) && !shownIds.has(x.l.id)).sort(byDate)
       .map(mk('disc', () => [SOLD], x => `HSD ${fmt(x.l.expiry_date)} · tạm dán giảm giá từ ${fmt(x.a.date)}`)),
     note: 'App đang tạm tính dán giảm giá trước HSD 45 ngày. Nếu NCC cho trả hàng, quản trị viên đặt điều khoản (mở sản phẩm hoặc Khác → Điều khoản) để không lỡ hạn báo trả.' });
 

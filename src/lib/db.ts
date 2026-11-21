@@ -134,7 +134,7 @@ const termSubs = new Set<() => void>();
 async function fetchTerms(store: string): Promise<Cfg> {
   try {
     const [t, s] = await Promise.all([
-      fetchAll<Term>((a, b) => supabase.from('terms').select('vendor_id,brand,product_id,action,days,raw_text,needs_review').eq('store_id', store).is('deleted_at', null).order('id').range(a, b)),
+      fetchAll<Term>((a, b) => supabase.from('terms').select('vendor_id,brand,product_id,action,days,pct,raw_text,needs_review').eq('store_id', store).is('deleted_at', null).order('id').range(a, b)),
       supabase.from('stores').select('*').eq('id', store).single().then(ok),
     ]);
     saveTerms(t, s).catch(() => {});        // mất mạng mở lại app vẫn đúng điều khoản / cài đặt mới

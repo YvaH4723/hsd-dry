@@ -21,7 +21,7 @@ export default function Backup({ store }: { store: string }) {
         q('batches', 'id,qty,expiry_date,expiry_note,mfg_date,status,deleted_at,updated_at,shelves(name),products(id,name,name_vi,ax_code,brand,vendor_id,no_return,sanh_dieu,vendors(code,name))'),
         q('products', 'ax_code,name,name_vi,brand,price,category,dept_group,active,no_return,sanh_dieu,deleted_at,vendors(code,name),barcodes(code)'),
         q('vendors', 'id,code,name', 'code'),
-        q('terms', 'vendor_id,brand,product_id,action,days,raw_text,needs_review,source,deleted_at'),
+        q('terms', 'vendor_id,brand,product_id,action,days,pct,raw_text,needs_review,source,deleted_at'),
         q('shelves', 'name,qr_code,sort_order,deleted_at', 'sort_order'),
         supabase.from('stores').select('*').eq('id', store).single(),
       ]);
