@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getDetector } from '../lib/scanner.ts';
+import { scanImage } from '../lib/ean.ts';
 import Icon from './Icon.tsx';
 
 // Màn quét duy nhất của app. Chỉ bật camera khi bấm nút; giữ camera mở để quét liên tục nhiều món
@@ -65,10 +66,15 @@ export default function Scanner({ onCode, auto = false }: { onCode: (code: strin
         if (stream.current === cur && !v.videoWidth) { v.play().catch(() => {}); setMsg('Camera chưa lên hình? Bấm Tắt camera rồi Bật lại, hoặc dùng Chụp ảnh.'); }
       }, 2500);
       s.getVideoTracks()[0].addEventListener('ended', () => { want.current = false; stop(); setMsg('Camera bị ngắt. Bấm Bật camera lại.'); });
+      // Xen kẽ: khung lẻ dùng ZXing, khung chẵn dùng bộ đọc dự phòng (mã sát mép nhãn, vạch in mảnh).
+      let odd = false;
       const loop = async () => {
         if (stream.current !== cur) return;
         if (v.readyState >= 2) {
-          try { const r = await det.detect(v); if (r[0]) emit(r[0].rawValue); } catch { /* khung hỏng, bỏ qua */ }
+          try {
+            if ((odd = !odd)) { const r = await det.detect(v); if (r[0]) emit(r[0].rawValue); }
+            else { const c = scanImage(v, v.videoWidth, v.videoHeight); if (c) emit(c); }
+          } catch { /* khung hỏng, bỏ qua */ }
         }
         setTimeout(loop, 120);
       };
@@ -112,8 +118,10 @@ export default function Scanner({ onCode, auto = false }: { onCode: (code: strin
     if (!f) return;
     try {
       const bmp = await createImageBitmap(f, { resizeWidth: 1600, resizeQuality: 'high' });   // ảnh 12MP làm máy cũ treo
-      const r = await (await getDetector()).detect(bmp).finally(() => bmp.close());
-      r[0] ? emit(r[0].rawValue) : setMsg('Không đọc được mã trong ảnh. Chụp gần, đủ sáng, giữ thẳng.');
+      const r = await (await getDetector()).detect(bmp).catch(() => []);
+      const code = r[0]?.rawValue ?? scanImage(bmp, bmp.width, bmp.height, false);
+      bmp.close();
+      code ? emit(code) : setMsg('Không đọc được mã trong ảnh. Chụp gần, đủ sáng, giữ thẳng.');
     } catch (e: any) { setMsg('Lỗi đọc ảnh: ' + e.message); }
   }
   const submit = () => { const t = typed.trim(); if (t) { (document.activeElement as HTMLElement | null)?.blur(); cb.current(t); setTyped(''); } };

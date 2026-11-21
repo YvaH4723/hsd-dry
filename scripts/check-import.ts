@@ -168,6 +168,15 @@ console.log('Quy tắc: OK');
   assert.equal(actionFor({ expiry_date: '2027-01-14', expiry_note: null, no_return: true }, p, cfg).kind, 'discount');
   console.log('watch ok');
 }
+// Bộ đọc EAN dự phòng: mã thật in sát mép nhãn (không có vạch kết thúc, vạch mảnh), đọc từ ảnh chụp camera.
+{
+  const { decodeRuns } = await import('../src/lib/ean.ts');
+  const r = [9, 11, 10, 31, 8, 13, 17, 14, 7, 43, 9, 12, 6, 16, 34, 15, 7, 25, 25, 24, 7, 15, 25, 25, 17, 23, 9, 11, 9, 12, 7, 14, 16, 15, 16, 25, 25, 25, 8, 13, 16, 24, 17, 16, 24, 15, 8, 24, 26, 24, 9, 11, 9, 23, 9, 31, 11, 102];
+  assert.equal(decodeRuns(r), '8936091201908');
+  assert.equal(decodeRuns([...r].reverse()), null);                       // đọc ngược: không ra mã sai
+  assert.equal(decodeRuns(r.map((w, i) => i === 20 ? w + 30 : w)), null); // hỏng một vạch: sai số kiểm tra, bỏ
+  console.log('ean ok');
+}
 const [cadPath, conPath] = process.argv.slice(2);
 if (!cadPath) process.exit(0);
 const cad: Record<string, unknown>[] = JSON.parse(readFileSync(cadPath, 'utf8')).filter((r: any) => r['AX Code']);
