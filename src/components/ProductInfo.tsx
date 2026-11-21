@@ -33,7 +33,7 @@ export function ProductRow({ p, onClick }: { p: Product; onClick: () => void }) 
           <div className="note num">{[p.ax_code, p.brand, money(p.price)].filter(Boolean).join(' · ')}</div>
           <div className="note">NCC: {vendorText(p)}{!p.active && <span className="warn"> · không có trong Cadencia</span>}</div>
         </div>
-        {p.stock_qty != null && <StockBadge p={p} />}
+        {(p.stock_qty != null || p.active) && <StockBadge p={p} />}
         <Icon name="chev" size={18} />
       </button>
     </div>
@@ -42,6 +42,7 @@ export function ProductRow({ p, onClick }: { p: Product; onClick: () => void }) 
 
 // Số tồn to, dễ thấy ở bên phải dòng: xanh khi còn hàng, đỏ khi hết (hoặc âm).
 export function StockBadge({ p }: { p: Product }) {
+  if (p.stock_qty == null) return <div className="stock none" title="Không có trong file tồn kho"><b>—</b><span>không có</span></div>;
   const q = Number(p.stock_qty);
   return <div className={`stock ${q > 0 ? 'in' : 'out'}`}><b>{q.toLocaleString('vi-VN')}</b><span>tồn</span></div>;
 }
@@ -124,6 +125,7 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
       </div>
       <dl className="facts">
         <dt>NCC</dt><dd>{vendorText(p)}</dd>
+        {p.stock_qty == null && p.active && <><dt>Tồn kho</dt><dd><StockBadge p={p} /> <span className="note">không có trong file tồn kho</span></dd></>}
         {p.stock_qty != null && <><dt>Tồn kho</dt><dd className="num"><StockBadge p={p} /> <span className="note">số liệu {p.stock_at ? new Date(p.stock_at).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }) : ''}</span></dd></>}
         <dt>Mã vạch</dt><dd className="num">{admin && p.barcodes?.length
           ? showCodes(p).split(', ').map(c => <span key={c} className="code">{c}<button className="link" aria-label={`Gỡ mã ${c}`} onClick={() => drop(c)}>Gỡ</button></span>)

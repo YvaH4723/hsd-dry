@@ -351,3 +351,4 @@ button.danger-solid { background: #dc2626; color: #fff; }
 .stock.in { background: var(--ok-soft); color: var(--ok); }
 .stock.out { background: var(--bad-soft); color: var(--bad); }
 .facts .stock { display: inline-block; vertical-align: middle; }
+.stock.none { background: var(--raise); color: var(--mute); }
