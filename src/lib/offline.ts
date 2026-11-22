@@ -46,7 +46,7 @@ export async function fetchAll<T>(page: (from: number, to: number) => PromiseLik
   }
 }
 
-export const BATCH_COLS = 'id,qty,expiry_date,expiry_note,mfg_date,no_return,status,shelf_id,updated_at,created_at,created_by,updated_by,shelves(name),products(id,name,name_vi,ax_code,brand,vendor_id,no_return,sanh_dieu,vendors(code,name))';
+export const BATCH_COLS = 'id,qty,expiry_date,expiry_note,mfg_date,no_return,status,shelf_id,updated_at,created_at,created_by,updated_by,shelves(name),products(id,name,name_vi,ax_code,brand,vendor_id,no_return,sanh_dieu,category,vendors(code,name))';
 const SNAP_PRODUCT_COLS = 'id,ax_code,name,name_vi,name_search,brand,price,active,category,vendor_id,no_return,sanh_dieu,stock_qty,stock_at,vendors(code,name),barcodes(code)';
 const ACTIVE = ['on_shelf', 'discounted', 'return_notified'];
 

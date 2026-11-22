@@ -7,7 +7,7 @@ import { normVendor } from './terms.ts';
 import { addShelfLife } from './dates.ts';
 
 export interface Term { vendor_id: string; brand: string | null; product_id: string | null; action: 'return' | 'discount' | 'watch'; days: number | null; pct?: number | null; raw_text: string | null; needs_review: boolean }
-export interface LotProduct { id: string; brand: string | null; vendor_id: string | null; no_return: boolean; sanh_dieu: boolean; vendors?: { code: string; name?: string } | null }
+export interface LotProduct { id: string; brand: string | null; vendor_id: string | null; no_return: boolean; sanh_dieu: boolean; category?: string | null; vendors?: { code: string; name?: string } | null }
 export interface Cfg { idx: Map<string, Term>; discountDays: number; returnBuffer: number }
 // problem: thiếu thông tin, app tạm tính giảm giá (hiện màu vàng). why: lý do bình thường (không đổi trả, hàng Ân Nam…).
 // pct: NCC nhận trả khi lô còn pct% hạn dùng (tính từ NSX đến HSD), thay cho số ngày cố định.
@@ -15,6 +15,8 @@ export interface TermInfo { kind: 'return' | 'discount' | 'watch'; days: number 
 export interface Action { kind: 'return' | 'discount' | 'reminder' | 'watch'; date: string; label?: string; raw?: string | null; why?: string; needMfg?: boolean }
 
 export const OWN_BRAND = new Set(['AFF01', 'SG99']);   // Ân Nam, Annam Gourmet: luôn dán giảm giá
+// Sữa bột (mọi NCC): không đổi trả, không giảm giá, nhắc khi HSD còn 10 ngày. Điều khoản riêng của sản phẩm vẫn đè được.
+export const WATCH_CATEGORY = /^POWDER MILK$/i, WATCH_DAYS = 10;
 // Điều khoản cấp sản phẩm khớp theo sản phẩm, bỏ qua nhãn và NCC (NCC đổi sau khi nhập file vẫn giữ được).
 const key = (v: string, brand: string | null, product: string | null) => product ? `p|${product}` : `${v}|${(brand ?? '').trim().toLowerCase()}|`;
 
@@ -24,6 +26,7 @@ export const termAt = (idx: Map<string, Term>, vendor: string, brand: string | n
 export function termFor(p: LotProduct, idx: Map<string, Term>): TermInfo {
   if (p.no_return) return { kind: 'discount', days: null, why: 'Sản phẩm đánh dấu không đổi trả' };
   if (p.sanh_dieu) return { kind: 'discount', days: null, why: 'Hàng Sành Điệu' };
+  if (p.category && WATCH_CATEGORY.test(p.category.trim()) && !idx.has(key('', null, p.id))) return { kind: 'watch', days: WATCH_DAYS, why: 'Sữa bột' };
   if (OWN_BRAND.has(normVendor(p.vendors?.code))) return { kind: 'discount', days: null, why: 'Hàng Ân Nam / Annam Gourmet' };
   const v = p.vendor_id;
   if (!v) return { kind: 'discount', days: null, problem: 'Chưa có NCC' };

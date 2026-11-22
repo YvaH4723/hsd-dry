@@ -18,7 +18,7 @@ export default function Backup({ store }: { store: string }) {
       setMsg('Đang tải dữ liệu…');
       const q = (t: string, cols: string, order = 'id') => fetchAll<any>((a, b) => supabase.from(t).select(cols).eq('store_id', store).order(order).range(a, b));
       const [lots, products, vendors, terms, shelves, st] = await Promise.all([
-        q('batches', 'id,qty,expiry_date,expiry_note,mfg_date,status,deleted_at,updated_at,shelves(name),products(id,name,name_vi,ax_code,brand,vendor_id,no_return,sanh_dieu,vendors(code,name))'),
+        q('batches', 'id,qty,expiry_date,expiry_note,mfg_date,status,deleted_at,updated_at,shelves(name),products(id,name,name_vi,ax_code,brand,vendor_id,no_return,sanh_dieu,category,vendors(code,name))'),
         q('products', 'ax_code,name,name_vi,brand,price,category,dept_group,active,no_return,sanh_dieu,deleted_at,vendors(code,name),barcodes(code)'),
         q('vendors', 'id,code,name', 'code'),
         q('terms', 'vendor_id,brand,product_id,action,days,pct,raw_text,needs_review,source,deleted_at'),

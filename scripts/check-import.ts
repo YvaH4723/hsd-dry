@@ -166,6 +166,9 @@ console.log('Quy tắc: OK');
   const a = actionFor({ expiry_date: '2027-01-14', expiry_note: null }, p, cfg);
   assert.ok(a.kind === 'watch' && a.date === '2027-01-04', 'watch: nhắc trước HSD 10 ngày');
   assert.equal(actionFor({ expiry_date: '2027-01-14', expiry_note: null, no_return: true }, p, cfg).kind, 'discount');
+  const milk = { ...p, id: 'm', vendor_id: 'OTHER', category: 'POWDER MILK' };
+  const b = actionFor({ expiry_date: '2026-12-30', expiry_note: null }, milk, cfg);
+  assert.ok(b.kind === 'watch' && b.date === '2026-12-20', 'sữa bột mọi NCC: chỉ nhắc 10 ngày');
   console.log('watch ok');
 }
 // Bộ đọc EAN dự phòng: mã thật in sát mép nhãn (không có vạch kết thúc, vạch mảnh), đọc từ ảnh chụp camera.
