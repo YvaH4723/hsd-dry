@@ -352,3 +352,4 @@ button.danger-solid { background: #dc2626; color: #fff; }
 .stock.out { background: var(--bad-soft); color: var(--bad); }
 .facts .stock { display: inline-block; vertical-align: middle; }
 .stock.none { background: var(--raise); color: var(--mute); }
+.lot-meta .ax { font-weight: 650; color: var(--text); }

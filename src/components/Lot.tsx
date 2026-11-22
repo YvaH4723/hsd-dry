@@ -21,6 +21,7 @@ export default function LotInfo({ l, a, title, showShelf = true, showHsd = true 
         <span className="lot-qty num">SL {l.qty}</span>
       </div>
       <div className="lot-meta">
+        {!title && l.products?.ax_code && <span className="num ax">{l.products.ax_code}</span>}
         {l.expiry_note === 'action_date'
           ? <span className="pill warn">Chưa có HSD</span>
           : showHsd && <span className="num">HSD {fmt(l.expiry_date)}</span>}
