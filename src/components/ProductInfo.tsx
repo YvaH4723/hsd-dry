@@ -19,6 +19,20 @@ export const confirmAttach = (p: Product, code: string) => ask({
     : 'So tên, vị, dung tích trên bao bì với tên ở trên trước khi gắn.'),
   ok: 'Gắn mã',
 });
+// Gắn mã vạch lạ vào sản phẩm (đã hỏi lại xong). Trả về mã đã gắn, hoặc lời báo lỗi để hiện cho người dùng.
+export async function attachCode(store: string, p: Product, code: string): Promise<{ codes?: string[]; error?: string; offline?: boolean }> {
+  const rows = (/^\d{11,12}$/.test(code) ? codeVariants(code) : [code]).map(c => ({ store_id: store, product_id: p.id, code: c }));
+  const { data, error } = await supabase.from('barcodes').upsert(rows, { onConflict: 'store_id,code', ignoreDuplicates: true }).select('code');
+  if (error && isNet(error)) return { offline: true, error: `Đang mất mạng: chưa gắn được mã ${code}.` };
+  if (error) return { error: 'Lỗi gắn mã: ' + error.message };
+  if (!data?.length) {
+    const { data: o } = await supabase.from('barcodes').select('deleted_at,products(name)').eq('store_id', store).in('code', rows.map(r => r.code)).limit(1).maybeSingle();
+    return { error: `Không gắn được: mã ${code} đã thuộc "${(o as any)?.products?.name ?? 'sản phẩm khác'}"${(o as any)?.deleted_at ? ' (đã xóa)' : ''}.` };
+  }
+  const codes = data.map(d => d.code as string);
+  localAddCodes(p.id, codes).catch(() => {});
+  return { codes };
+}
 export const showCodes = (p: Product) => (p.barcodes ?? []).map(b => b.code).filter((c, _, all) => !all.some(o => o !== c && c === '0' + o)).join(', ') || 'Chưa có mã vạch';
 export const vendorText = (p: Product) => !p.vendors ? 'Chưa có NCC' : p.vendors.code.startsWith('TB-') ? `${p.vendors.name} (chưa có mã NCC)` : `${p.vendors.name} · ${p.vendors.code}`;
 

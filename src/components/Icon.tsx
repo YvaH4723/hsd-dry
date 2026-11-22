@@ -13,6 +13,8 @@ const P: Record<string, ReactNode> = {
   flip: <><path d="M4 9a8 8 0 0 1 14.5-3.5M20 15a8 8 0 0 1-14.5 3.5" /><path d="M18.5 2.5v3h-3M5.5 21.5v-3h3" /></>,
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" /></>,
   x: <path d="M6 6l12 12M18 6 6 18" />,
+  download: <path d="M12 4v11m-5-5 5 5 5-5M5 20h14" />,
+  printer: <><path d="M7 9V4h10v5M7 17H5a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1h-2" /><path d="M7 14h10v6H7z" /></>,
   back: <path d="M15 5l-7 7 7 7" />,
   chev: <path d="M9 5l7 7-7 7" />,
   search: <><circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" /></>,

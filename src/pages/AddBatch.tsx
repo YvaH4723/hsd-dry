@@ -4,7 +4,7 @@ import { codeVariants, findByCode, pname, PRODUCT_COLS, searchProducts, useNames
 import { actionFor, termFor } from '../lib/action.ts';
 import { localAddCodes, addBatchOffline, incrBatchOffline, isNet, loadBatches } from '../lib/offline.ts';
 import { daysLeft, fmt, whoLine } from '../lib/dates.ts';
-import ProductInfo, { ProductRow, confirmAttach } from '../components/ProductInfo.tsx';
+import ProductInfo, { ProductRow, confirmAttach, attachCode } from '../components/ProductInfo.tsx';
 import ActionLine from '../components/ActionLine.tsx';
 import Scanner from '../components/Scanner.tsx';
 import DateInput, { type DateVal } from '../components/DateInput.tsx';
@@ -79,19 +79,13 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
   // Mã chưa có trong danh mục: chọn đúng sản phẩm để gắn mã, lần sau quét là ra.
   async function attach(p: Product) {
     const code = unknown;
-    const rows = (/^\d{11,12}$/.test(code) ? codeVariants(code) : [code]).map(c => ({ store_id: store, product_id: p.id, code: c }));
     if (!await confirmAttach(p, code)) return;
     setBusy(true);
     try {
-      const { data, error } = await supabase.from('barcodes').upsert(rows, { onConflict: 'store_id,code', ignoreDuplicates: true }).select('code');
-      if (error && isNet(error)) { choose(p); return setMsg({ text: `Đang mất mạng: chưa gắn được mã ${code}. Vẫn thêm lô được, có mạng thì quét lại để gắn.`, tone: 'warn' }); }
-      if (error) return setMsg({ text: 'Lỗi gắn mã: ' + error.message, tone: 'bad' });
-      if (!data?.length) {
-        const { data: o } = await supabase.from('barcodes').select('deleted_at,products(name)').eq('store_id', store).in('code', rows.map(r => r.code)).limit(1).maybeSingle();
-        return setMsg({ text: `Không gắn được: mã ${code} đã thuộc "${(o as any)?.products?.name ?? 'sản phẩm khác'}"${(o as any)?.deleted_at ? ' (đã xóa)' : ''}.`, tone: 'bad' });
-      }
-      localAddCodes(p.id, data.map(d => d.code as string)).catch(() => {});
-      choose({ ...p, barcodes: [...(p.barcodes ?? []), ...data.map(d => ({ code: d.code as string }))] });
+      const r = await attachCode(store, p, code);
+      if (r.offline) { choose(p); return setMsg({ text: r.error + ' Vẫn thêm lô được, có mạng thì quét lại để gắn.', tone: 'warn' }); }
+      if (!r.codes) return setMsg({ text: r.error!, tone: 'bad' });
+      choose({ ...p, barcodes: [...(p.barcodes ?? []), ...r.codes.map(code => ({ code }))] });
       setMsg({ text: `Đã gắn mã ${code} cho sản phẩm này. Lần sau quét là ra.`, tone: 'ok' });
     } finally { setBusy(false); }
   }
