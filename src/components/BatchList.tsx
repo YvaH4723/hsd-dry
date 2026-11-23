@@ -3,7 +3,7 @@ import { canDelete, canWrite, type Member } from '../supabase.ts';
 import { useShelves, useTerms, useZones, zoneFilter, type Shelf } from '../lib/db.ts';
 import ZoneChips from './ZoneChips.tsx';
 import LotSearchBar, { useLotSearch } from './LotSearch.tsx';
-import { loadBatches, updateBatchOffline } from '../lib/offline.ts';
+import { loadBatches, onResume, updateBatchOffline } from '../lib/offline.ts';
 import { actionFor, termFor } from '../lib/action.ts';
 import { daysLeft, fmt } from '../lib/dates.ts';
 import DateInput, { type DateVal } from './DateInput.tsx';
@@ -31,7 +31,7 @@ export default function BatchList({ member, shelfId, productId, rev }: { member:
   const search = useLotSearch();
 
   const load = () => loadBatches(store, { shelfId, productId }).then(d => { setErr(''); setRows(d); }, (e: Error) => setErr(e.message));
-  useEffect(() => { load(); }, [store, shelfId, productId, rev]);
+  useEffect(() => { load(); return onResume(load); }, [store, shelfId, productId, rev]);
 
   const top = !productId && !shelfId;           // chỉ lọc khu ở tab Hết hạn
   const kindOf = (b: LotRow) => b.expiry_note === 'action_date' ? 'nohsd' : terms ? actionFor(b, b.products, terms).kind : '';

@@ -15,7 +15,9 @@ export async function readRows(file: File, col: string | string[] = 'AX Code', w
   const XLSX = await import('xlsx');
   const cols = [col].flat();
   const wb = XLSX.read(await file.arrayBuffer());
-  const aoa = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[(sheet && wb.SheetNames.find(n => n.trim().toUpperCase() === sheet)) || wb.SheetNames[0]], { header: 1, defval: null });
+  const name = sheet ? wb.SheetNames.find(n => n.trim().toUpperCase() === sheet) : wb.SheetNames[0];
+  if (!name) throw new Error(`Không thấy sheet ${sheet} trong file. Có đúng file ${what} không?`);
+  const aoa = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[name], { header: 1, defval: null });
   const h = aoa.findIndex((r, i) => i < 20 && r.some(c => cols.includes(String(c ?? '').trim())));
   if (h < 0) throw new Error(`Không thấy cột ${cols.map(c => `"${c}"`).join(' hoặc ')} trong 20 dòng đầu. Có đúng file ${what} không?`);
   const head = aoa[h].map((c, i) => String(c ?? '').trim() || 'col' + i);   // cột không có tiêu đề: col6, col16…

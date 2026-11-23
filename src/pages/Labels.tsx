@@ -89,12 +89,14 @@ export default function Labels({ member }: { member: Member }) {
   }
   // Bấm +/− nhanh: gửi lần lượt từng lệnh, lệnh sau chỉ chạy khi lệnh trước xong, nên máy chủ luôn giữ số cuối cùng.
   const chain = useRef(Promise.resolve());
-  function setQty(l: Label, qty: number) {
+  function setQty(l: Label, qty: number, bump?: number) {
     qty = Math.min(999, Math.max(1, qty || 1));
     setList(xs => xs!.map(x => x.id === l.id ? { ...x, qty } : x));
     chain.current = chain.current.then(async () => {
-      const { error } = await supabase.from('labels').update({ qty }).eq('id', l.id);
+      // +/−: cộng trừ trên máy chủ (đồng nghiệp vừa quét thêm thì không mất); gõ số: đặt đúng số đó.
+      const { data, error } = bump ? await supabase.rpc('label_bump', { p_id: l.id, p_n: bump }) : await supabase.from('labels').update({ qty }).eq('id', l.id).select('qty').single();
       if (error) { setMsg({ text: errText(error), tone: 'bad' }); load(); }
+      else if (data && (data as any).qty !== qty) setList(xs => xs!.map(x => x.id === l.id ? { ...x, qty: (data as any).qty } : x));
     });
   }
   async function remove(l: Label) {
@@ -118,8 +120,13 @@ export default function Labels({ member }: { member: Member }) {
     if (saving) return;
     setSaving(true);
     try {
+    // Tải lại trước khi xuất: lấy cả món đồng nghiệp vừa quét thêm.
+    const { data, error } = await supabase.from('labels').select(SEL).eq('store_id', store);
+    if (error) throw error;
+    const fresh = data as unknown as Label[];
+    setList(fresh);
     const XLSX = await import('xlsx');
-    const rows = sorted.map(l => ({ 'Mã sản phẩm': l.products?.ax_code ?? '', 'Tên sản phẩm': l.products?.name ?? '', 'Số lượng': l.qty }));
+    const rows = sortL(fresh).map(l => ({ 'Mã sản phẩm': l.products?.ax_code ?? '', 'Tên sản phẩm': l.products?.name ?? '', 'Số lượng': l.qty }));
     const ws = XLSX.utils.json_to_sheet(rows);
     ws['!cols'] = [{ wch: 12 }, { wch: 60 }, { wch: 9 }];
     const wb = XLSX.utils.book_new();
@@ -130,10 +137,11 @@ export default function Labels({ member }: { member: Member }) {
     finally { setSaving(false); }
   }
 
-  const sorted = [...(list ?? [])].sort(
+  const sortL = (xs: Label[]) => [...xs].sort(
     sort === 'name' ? (a, b) => nm(a).localeCompare(nm(b), 'vi')
     : sort === 'ax' ? (a, b) => (a.products?.ax_code ?? '~').localeCompare(b.products?.ax_code ?? '~')
     : (a, b) => b.updated_at.localeCompare(a.updated_at));                 // quét lại món cũ: nhảy lên đầu
+  const sorted = sortL(list ?? []);
   const total = sorted.reduce((s, l) => s + l.qty, 0), noAx = sorted.filter(l => !l.products?.ax_code).length;
   const inList = found && list?.find(l => l.product_id === found.id);
 
@@ -184,9 +192,9 @@ export default function Labels({ member }: { member: Member }) {
               </div>
               {write ? <>
                 <div className="stepper sm">
-                  <button type="button" aria-label="Bớt 1 biển" disabled={l.qty <= 1} onClick={() => setQty(l, l.qty - 1)}><Icon name="minus" /></button>
+                  <button type="button" aria-label="Bớt 1 biển" disabled={l.qty <= 1} onClick={() => setQty(l, l.qty - 1, -1)}><Icon name="minus" /></button>
                   <QtyInput value={l.qty} onSet={v => setQty(l, v)} />
-                  <button type="button" aria-label="Thêm 1 biển" onClick={() => setQty(l, l.qty + 1)}><Icon name="plus" /></button>
+                  <button type="button" aria-label="Thêm 1 biển" onClick={() => setQty(l, l.qty + 1, 1)}><Icon name="plus" /></button>
                 </div>
                 <button className="icon" aria-label="Bỏ khỏi danh sách" onClick={() => remove(l)}><Icon name="x" size={18} /></button>
               </> : <span className="num">{l.qty}</span>}

@@ -82,7 +82,9 @@ export default function App() {
   }, [session]);
 
   // Mất mạng, hoặc mạng chậm (quá 5 giây chưa đọc được tài khoản): mở app ngay bằng thông tin đã lưu trên máy.
-  const offlineMember = (session === null && !navigator.onLine) || (slow && member === undefined) ? cachedMember(session?.user.id) : null;
+  // Có mạng mà không còn phiên đăng nhập (bị thu hồi): hiện màn Đăng nhập, không mở app bằng tài khoản cũ với quyền ẩn danh.
+  // Hàng đợi và dữ liệu trên máy giữ nguyên, đăng nhập lại là gửi tiếp.
+  const offlineMember = (session === null && !navigator.onLine) ? cachedMember() : session && slow && member === undefined ? cachedMember(session.user.id) : null;
   const me = member ?? offlineMember;
   useEffect(() => { if (me) { startSync(me.store_id); syncPush(me.store_id); } }, [me?.store_id]);
 

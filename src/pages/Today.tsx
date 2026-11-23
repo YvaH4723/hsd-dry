@@ -3,7 +3,7 @@ import { canWrite, type Member } from '../supabase.ts';
 import { pname, useNames, useShelves, useTerms, useZones, zoneFilter } from '../lib/db.ts';
 import ZoneChips from '../components/ZoneChips.tsx';
 import LotSearchBar, { useLotSearch } from '../components/LotSearch.tsx';
-import { loadBatches, updateBatchOffline, useSync } from '../lib/offline.ts';
+import { loadBatches, onResume, updateBatchOffline, useSync } from '../lib/offline.ts';
 import { actionFor, type Action } from '../lib/action.ts';
 import { daysLeft, fmt, whoLine } from '../lib/dates.ts';
 import { LotsLoading, type LotRow } from '../components/Lot.tsx';
@@ -41,7 +41,7 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
   const search = useLotSearch();
 
   const load = () => loadBatches(store, {}).then(d => { setErr(''); setLots(d); }, (e: Error) => setErr(e.message));
-  useEffect(() => { load(); }, [store, rev]);
+  useEffect(() => { load(); return onResume(load); }, [store, rev]);
   const { failed } = useSync();
   useEffect(() => { if (failed.length) load(); }, [failed.length]);   // máy chủ từ chối thay đổi gửi sau: tải lại cho màn đúng thật
   useEffect(() => { if (toast) { const t = setTimeout(() => setToast(null), 6000); return () => clearTimeout(t); } }, [toast]);
@@ -76,8 +76,8 @@ export default function Today({ member, rev, onHistory }: { member: Member; rev?
     { key: 'hsd', title: 'Quá HSD, bỏ khỏi kệ', tone: 'bad', tile: 'over',
       items: base.filter(x => expired(x.l) && (x.l.status === 'on_shelf' || x.l.status === 'discounted')).sort((x, y) => x.l.expiry_date.localeCompare(y.l.expiry_date))
         .map(mk('bad', x => [['discarded', 'Đã hủy', true], ...(x.a.kind === 'return' ? [['return_notified', 'Đã báo trả'] as Btn] : []), SOLD], x => `Quá HSD ${-daysLeft(x.l.expiry_date)} ngày`)) },
-    { key: 'late', title: 'Quá ngày báo trả', tone: 'bad', tile: 'over',
-      items: open0.filter(x => x.a.kind === 'return' && left(x) < 0).sort(byDate).map(mk('bad', retBtns, retMeta)) },
+    { key: 'late', title: 'Quá ngày báo trả', tone: 'bad', tile: 'over',                // NCC không nhận nữa: cho dán giảm giá
+      items: open0.filter(x => x.a.kind === 'return' && left(x) < 0).sort(byDate).map(mk('bad', x => [...retBtns(x).slice(0, 1), ['discounted', 'Đã dán giảm giá'] as Btn, SOLD], retMeta)) },
     { key: 'soon', title: `Báo trả trong ${SOON} ngày`, tone: 'ret', tile: 'ret',
       items: open0.filter(x => x.a.kind === 'return' && left(x) >= 0 && left(x) <= SOON).sort(byDate).map(mk('ret', retBtns, retMeta)) },
     { key: 'remind', title: 'Đến ngày nhắc, chưa có HSD', tone: 'ret', tile: 'ret',

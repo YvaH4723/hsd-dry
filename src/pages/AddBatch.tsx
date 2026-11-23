@@ -97,7 +97,8 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
   const n = Math.max(1, parseInt(qty) || 1);
   const sh = shelves.find(s => s.id === shelf);
   useEffect(() => { if (shelf && shelves.length && !sh) setShelf(''); }, [shelves, shelf]);   // kệ đã lưu không còn (bị xóa / tài khoản khác)
-  const same = existing?.find(l => l.expiry_note !== 'action_date' && l.expiry_date === date.exp && !!l.no_return === noRet);
+  // Chỉ cộng vào lô còn trên kệ: lô đã báo trả / dán giảm giá xử lý riêng, cộng vào sẽ mất dấu hộp mới.
+  const same = existing?.find(l => l.status === 'on_shelf' && l.expiry_note !== 'action_date' && l.expiry_date === date.exp && !!l.no_return === noRet);
   const canMerge = same && (same.shelf_id ?? '') === shelf;
 
   function reset(text: string) {

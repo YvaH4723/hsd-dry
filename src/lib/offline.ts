@@ -77,6 +77,7 @@ async function local() {
 export async function refreshSnapshot(store: string) {
   emit({ busy: 'Đang tải dữ liệu về máy…' });
   try {
+    if (!(await supabase.auth.getSession()).data.session) throw new Error('Chưa đăng nhập: đăng nhập lại để tải dữ liệu');
     const [products, terms, shelves, st] = await Promise.all([
       fetchAll<Product>((a, b) => supabase.from('products').select(SNAP_PRODUCT_COLS).eq('store_id', store).is('deleted_at', null).order('id').range(a, b) as any),
       fetchAll<Term>((a, b) => supabase.from('terms').select('vendor_id,brand,product_id,action,days,pct,raw_text,needs_review').eq('store_id', store).is('deleted_at', null).order('id').range(a, b) as any),
@@ -206,7 +207,7 @@ async function incrOne(id: string, n: number, op: string) {
   const { data, error } = await supabase.rpc('add_qty', { p_id: id, p_n: n, p_op: op });   // p_op: gửi lại không cộng hai lần
   if (error) return { error };
   const r = Array.isArray(data) ? data[0] : data;
-  if (!r) return { error: { app: true, message: 'Lô không còn trên máy chủ hoặc không có quyền sửa' } };
+  if (!r) return { error: { app: true, message: 'Lô cũ không còn trên kệ (người khác vừa bán hết, báo trả hoặc xóa). Bấm Lưu lô mới để thêm thành lô riêng' } };
   await remember(id, r.updated_at);
   return { error: null };
 }
@@ -281,6 +282,13 @@ export function incrBatchOffline(store: string, id: string, n: number, before: u
 export const auditOffline = (store: string, batch_id: string, action: string, before: unknown, after: unknown) => enqueue(auditOp(store, batch_id, action, before, after));
 
 // ---------- đọc lô: máy chủ nếu có mạng, không thì bản sao; luôn phủ thêm thay đổi đang chờ gửi ----------
+// App mở lại từ nền sau vài phút: gọi cb để tải lại (người khác có thể vừa báo trả, bán hết).
+export function onResume(cb: () => void, ms = 180000) {
+  let hidden = 0;
+  const f = () => { if (document.hidden) hidden = Date.now(); else if (hidden && Date.now() - hidden > ms) { hidden = 0; cb(); } };
+  document.addEventListener('visibilitychange', f);
+  return () => document.removeEventListener('visibilitychange', f);
+}
 export async function loadBatches(store: string, f: { shelfId?: string; productId?: string }): Promise<any[]> {
   let rows: any[];
   try {
@@ -290,7 +298,7 @@ export async function loadBatches(store: string, f: { shelfId?: string; productI
       if (f.productId) q = q.eq('product_id', f.productId);
       return q.order('expiry_date').order('id').range(a, b);
     });
-    if (!f.shelfId && !f.productId) await put('batches', rows);
+    if (!f.shelfId && !f.productId && (await supabase.auth.getSession()).data.session) await put('batches', rows);   // không có phiên: kết quả rỗng do RLS, đừng ghi đè bản sao
   } catch (e) {
     if (!isNet(e)) throw e;
     const saved = await get<any[]>('batches');

@@ -8,13 +8,13 @@ const PAR = ['LLLLLL', 'LLGLGG', 'LLGGLG', 'LLGGGL', 'LGLLGG', 'LGGLLG', 'LGGGLL
 // Một chữ số (4 phần tử, 7 module): chọn mẫu khớp khoảng cạnh-cạnh, hòa thì so tổng 2 vạch.
 function digit(w: number[], T: number[][]): [number, number] | null {
   const m = (w[0] + w[1] + w[2] + w[3]) / 7, t1 = Math.round((w[0] + w[1]) / m), t2 = Math.round((w[1] + w[2]) / m);
-  let best: [number, number] | null = null;
+  const c: [number, number][] = [];
   T.forEach((p, d) => {
     if (p[0] + p[1] !== t1 || p[1] + p[2] !== t2) return;
-    const err = Math.abs((w[1] + w[3]) / m - (p[1] + p[3])) + Math.abs((w[0] + w[2]) / m - (p[0] + p[2]));
-    if (!best || err < best[1]) best = [d, err];
+    c.push([d, Math.abs((w[1] + w[3]) / m - (p[1] + p[3])) + Math.abs((w[0] + w[2]) / m - (p[0] + p[2]))]);
   });
-  return best;
+  c.sort((a, b) => a[1] - b[1]);
+  return c.length && (c.length < 2 || c[1][1] - c[0][1] >= 1) ? c[0] : null;   // 1↔7, 2↔8 sát nhau quá: không đoán
 }
 
 // runs: độ rộng các đoạn, phần tử đầu là vạch. Thử mọi vị trí vạch bắt đầu.
