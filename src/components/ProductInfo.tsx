@@ -20,8 +20,20 @@ export const confirmAttach = (p: Product, code: string) => ask({
   ok: 'Gắn mã',
 });
 // Gắn mã vạch lạ vào sản phẩm (đã hỏi lại xong). Trả về mã đã gắn, hoặc lời báo lỗi để hiện cho người dùng.
+// Mã đã thuộc sản phẩm khác (kể cả bản có / không số 0 đầu, kể cả mã đã gỡ mềm): trả tên sản phẩm đó.
+export async function codeOwner(store: string, code: string, except?: string): Promise<string | null> {
+  let q = supabase.from('barcodes').select('deleted_at,products(name)').eq('store_id', store).in('code', codeVariants(code));
+  if (except) q = q.neq('product_id', except);
+  const { data, error } = await q.limit(1).maybeSingle();
+  if (error) throw error;
+  return data ? `${(data as any).products?.name ?? 'sản phẩm khác'}${(data as any).deleted_at ? ' (đã gỡ)' : ''}` : null;
+}
 export async function attachCode(store: string, p: Product, code: string): Promise<{ codes?: string[]; error?: string; offline?: boolean }> {
   const rows = (/^\d{11,12}$/.test(code) ? codeVariants(code) : [code]).map(c => ({ store_id: store, product_id: p.id, code: c }));
+  try {
+    const o = await codeOwner(store, code, p.id);                         // chặn chia đôi mã: bản 12 số ở A, bản 13 số ở B
+    if (o) return { error: `Không gắn được: mã ${code} đang thuộc "${o}".` };
+  } catch (e) { if (isNet(e)) return { offline: true, error: `Đang mất mạng: chưa gắn được mã ${code}.` }; return { error: 'Lỗi gắn mã: ' + (e as any).message }; }
   const { data, error } = await supabase.from('barcodes').upsert(rows, { onConflict: 'store_id,code', ignoreDuplicates: true }).select('code');
   if (error && isNet(error)) return { offline: true, error: `Đang mất mạng: chưa gắn được mã ${code}.` };
   if (error) return { error: 'Lỗi gắn mã: ' + error.message };
@@ -85,21 +97,16 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
     const rows = (/^\d{11,12}$/.test(code) ? codeVariants(code) : [code]).map(c => ({ store_id: member.store_id, product_id: p.id, code: c }));
     if ((p.barcodes ?? []).some(b => rows.some(r => r.code === b.code))) return setOk(`Mã ${code} đã gắn với sản phẩm này rồi.`);
     if (!await confirmAttach(p, code)) return;
-    const { data, error } = await supabase.from('barcodes').upsert(rows, { onConflict: 'store_id,code', ignoreDuplicates: true }).select('code');
-    if (error) return setErr(isNet(error) ? 'Đang mất mạng: gắn mã cần có mạng.' : 'Lỗi gắn mã: ' + error.message);
-    if (!data?.length) {
-      const { data: o } = await supabase.from('barcodes').select('deleted_at,products(name)').eq('store_id', member.store_id).in('code', rows.map(r => r.code)).limit(1).maybeSingle();
-      return setErr(`Không gắn được: mã ${code} đang thuộc "${(o as any)?.products?.name ?? 'sản phẩm khác'}"${(o as any)?.deleted_at ? ' (đã xóa)' : ''}.`);
-    }
-    localAddCodes(p.id, data.map(d => d.code as string)).catch(() => {});
+    const r = await attachCode(member.store_id, p, code);
+    if (!r.codes) return setErr(r.error!);
     setOk(`Đã gắn mã ${code}. Lần sau quét là ra sản phẩm này.`);
-    onChange?.({ ...p, barcodes: [...(p.barcodes ?? []), ...data.map(d => ({ code: d.code as string }))] });
+    onChange?.({ ...p, barcodes: [...(p.barcodes ?? []), ...r.codes.map(code => ({ code }))] });
   }
   // Gỡ mã gắn nhầm (cả biến thể có / không số 0 đầu của cùng mã).
   async function drop(code: string) {
     if (!await ask({ title: `Gỡ mã ${code}?`, body: `Khỏi "${pname(p)}". Quét mã này sẽ không ra sản phẩm này nữa.`, ok: 'Gỡ mã', danger: true })) return;
     setOk(''); setErr('');
-    const codes = (p.barcodes ?? []).map(b => b.code).filter(c => c === code || c === '0' + code || '0' + c === code);
+    const vs = new Set(codeVariants(code)), codes = (p.barcodes ?? []).map(b => b.code).filter(c => vs.has(c) || codeVariants(c).includes(code));   // mọi bản có / không số 0 đầu
     const { error } = await supabase.from('barcodes').delete().eq('store_id', member.store_id).eq('product_id', p.id).in('code', codes);
     if (error) return setErr(isNet(error) ? 'Đang mất mạng: gỡ mã cần có mạng.' : 'Lỗi gỡ mã: ' + error.message);
     localDropCodes(p.id, codes).catch(() => {});
@@ -127,7 +134,7 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
         <div className={`term ${t.problem ? 'warn' : t.kind === 'discount' ? 'disc' : 'ret'}`}>
           <Icon name={t.problem ? 'alert' : t.kind === 'return' ? 'truck' : t.kind === 'watch' ? 'bell' : 'tag'} size={20} />
           <div>
-            <b>{t.problem ? 'Cần đặt điều khoản' : t.kind === 'return' ? `Báo trả NCC · ${t.days} ngày` : t.kind === 'watch' ? `Chỉ nhắc · còn ${t.days} ngày` : 'Không đổi trả · dán giảm giá'}</b>
+            <b>{t.problem ? 'Cần đặt điều khoản' : t.kind === 'return' ? (t.pct ? `Báo trả NCC · còn ${t.pct}% hạn dùng` : `Báo trả NCC · ${t.days} ngày`) : t.kind === 'watch' ? `Chỉ nhắc · còn ${t.days} ngày` : 'Không đổi trả · dán giảm giá'}</b>
             <div>{describeTerm(t, terms)}</div>
             {t.raw && t.problem && <div className="note">Câu gốc: {t.raw}</div>}
           </div>

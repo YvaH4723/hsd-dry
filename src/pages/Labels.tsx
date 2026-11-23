@@ -8,11 +8,13 @@ import Scanner from '../components/Scanner.tsx';
 import Icon from '../components/Icon.tsx';
 import { ask } from '../components/Ask.tsx';
 import { ProductRow, confirmAttach, attachCode } from '../components/ProductInfo.tsx';
+import { saveXlsx } from '../lib/xlsxSave.ts';
 
-interface Label { id: string; product_id: string; qty: number; created_at: string; products: { name: string; name_vi: string | null; ax_code: string | null } | null }
+interface Label { id: string; product_id: string; qty: number; created_at: string; updated_at: string; products: { name: string; name_vi: string | null; ax_code: string | null } | null }
 type Sort = 'time' | 'name' | 'ax';
 const SORT_KEY = 'hsd.label-sort';
-const SEL = 'id,product_id,qty,created_at,products(name,name_vi,ax_code)';
+const SEL = 'id,product_id,qty,created_at,updated_at,products(name,name_vi,ax_code)';
+const nm = (l: Label) => l.products ? pname(l.products as Product) : '';
 const errText = (e: any) => isNet(e) ? 'Đang mất mạng: danh sách in biển cần có mạng.' : 'Lỗi: ' + e.message;
 
 export default function Labels({ member }: { member: Member }) {
@@ -85,11 +87,15 @@ export default function Labels({ member }: { member: Member }) {
     } catch (e: any) { setMsg({ text: errText(e), tone: 'bad' }); }
     finally { setBusy(false); }
   }
-  async function setQty(l: Label, qty: number) {
+  // Bấm +/− nhanh: gửi lần lượt từng lệnh, lệnh sau chỉ chạy khi lệnh trước xong, nên máy chủ luôn giữ số cuối cùng.
+  const chain = useRef(Promise.resolve());
+  function setQty(l: Label, qty: number) {
     qty = Math.min(999, Math.max(1, qty || 1));
     setList(xs => xs!.map(x => x.id === l.id ? { ...x, qty } : x));
-    const { error } = await supabase.from('labels').update({ qty }).eq('id', l.id);
-    if (error) { setMsg({ text: errText(error), tone: 'bad' }); load(); }
+    chain.current = chain.current.then(async () => {
+      const { error } = await supabase.from('labels').update({ qty }).eq('id', l.id);
+      if (error) { setMsg({ text: errText(error), tone: 'bad' }); load(); }
+    });
   }
   async function remove(l: Label) {
     if (!await ask({ title: 'Bỏ khỏi danh sách in?', body: l.products ? pname(l.products as Product) : '', ok: 'Bỏ', danger: true })) return;
@@ -98,12 +104,20 @@ export default function Labels({ member }: { member: Member }) {
     setList(xs => xs!.filter(x => x.id !== l.id));
   }
   async function clearAll() {
-    if (!await ask({ title: `Xóa hết ${list!.length} sản phẩm?`, body: 'Danh sách chung của cả nhóm sẽ trống. Nên xuất Excel trước.', ok: 'Xóa hết', danger: true })) return;
-    const { error } = await supabase.from('labels').delete().eq('store_id', store);
-    if (error) return setMsg({ text: errText(error), tone: 'bad' });
-    setList([]); setMsg({ text: 'Đã xóa hết danh sách.', tone: 'ok' });
+    const ids = list!.map(x => x.id);
+    if (!await ask({ title: `Xóa hết ${ids.length} sản phẩm đang hiện?`, body: 'Món đồng nghiệp vừa quét thêm mà chưa hiện trên máy này được giữ lại. Nên xuất Excel trước.', ok: 'Xóa hết', danger: true })) return;
+    for (let i = 0; i < ids.length; i += 200) {
+      const { error } = await supabase.from('labels').delete().in('id', ids.slice(i, i + 200));
+      if (error) { load(); return setMsg({ text: errText(error), tone: 'bad' }); }
+    }
+    await load();
+    setMsg({ text: 'Đã xóa các sản phẩm đã hiện. Món người khác vừa thêm (nếu có) vẫn còn.', tone: 'ok' });
   }
+  const [saving, setSaving] = useState(false);
   async function exportXlsx() {
+    if (saving) return;
+    setSaving(true);
+    try {
     const XLSX = await import('xlsx');
     const rows = sorted.map(l => ({ 'Mã sản phẩm': l.products?.ax_code ?? '', 'Tên sản phẩm': l.products?.name ?? '', 'Số lượng': l.qty }));
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -111,19 +125,22 @@ export default function Labels({ member }: { member: Member }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Biển tên');
     const d = new Date(), p2 = (n: number) => String(n).padStart(2, '0');
-    XLSX.writeFile(wb, `bien-ten-${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}.xlsx`);
+    await saveXlsx(wb, `bien-ten-${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}-${p2(d.getHours())}${p2(d.getMinutes())}.xlsx`);
+    } catch (e: any) { setMsg({ text: 'Chưa xuất được file: ' + e.message, tone: 'bad' }); }
+    finally { setSaving(false); }
   }
 
   const sorted = [...(list ?? [])].sort(
-    sort === 'name' ? (a, b) => (a.products?.name ?? '').localeCompare(b.products?.name ?? '', 'vi')
+    sort === 'name' ? (a, b) => nm(a).localeCompare(nm(b), 'vi')
     : sort === 'ax' ? (a, b) => (a.products?.ax_code ?? '~').localeCompare(b.products?.ax_code ?? '~')
-    : (a, b) => b.created_at.localeCompare(a.created_at));
+    : (a, b) => b.updated_at.localeCompare(a.updated_at));                 // quét lại món cũ: nhảy lên đầu
   const total = sorted.reduce((s, l) => s + l.qty, 0), noAx = sorted.filter(l => !l.products?.ax_code).length;
   const inList = found && list?.find(l => l.product_id === found.id);
 
   return (
     <>
       <h2 className="title">In biển tên</h2>
+      {msg && !write && <p className={`msg ${msg.tone ?? ''}`} role="status">{msg.text}</p>}
       {write && <>
         <Scanner onCode={onCode} />
         {msg && <p className={`msg ${msg.tone ?? ''}`} role="status">{msg.text}</p>}
@@ -168,7 +185,7 @@ export default function Labels({ member }: { member: Member }) {
               {write ? <>
                 <div className="stepper sm">
                   <button type="button" aria-label="Bớt 1 biển" disabled={l.qty <= 1} onClick={() => setQty(l, l.qty - 1)}><Icon name="minus" /></button>
-                  <input inputMode="numeric" aria-label="Số biển" value={l.qty} onChange={e => setQty(l, parseInt(e.target.value.replace(/\D/g, '')))} />
+                  <QtyInput value={l.qty} onSet={v => setQty(l, v)} />
                   <button type="button" aria-label="Thêm 1 biển" onClick={() => setQty(l, l.qty + 1)}><Icon name="plus" /></button>
                 </div>
                 <button className="icon" aria-label="Bỏ khỏi danh sách" onClick={() => remove(l)}><Icon name="x" size={18} /></button>
@@ -176,11 +193,19 @@ export default function Labels({ member }: { member: Member }) {
             </div>
           ))}
         </div>
-        <button className="pri block" onClick={exportXlsx}><Icon name="download" size={18} />Xuất Excel</button>
+        <button className="pri block" disabled={saving} onClick={exportXlsx}><Icon name="download" size={18} />Xuất Excel</button>
         {write && <button className="danger block" onClick={clearAll}>Xóa hết danh sách</button>}
       </>}
       {list && !sorted.length && <p className="note">Chưa có sản phẩm nào. Quét mã ở trên rồi bấm Xác nhận thêm.</p>}
       {!list && !msg && <p className="note">Đang tải…</p>}
     </>
   );
+}
+
+// Ô số biển: gõ tự do (xóa hết để gõ số mới), rời ô mới lưu.
+function QtyInput({ value, onSet }: { value: number; onSet: (n: number) => void }) {
+  const [v, setV] = useState(String(value));
+  useEffect(() => setV(String(value)), [value]);
+  return <input inputMode="numeric" aria-label="Số biển" value={v} onChange={e => setV(e.target.value.replace(/\D/g, '').slice(0, 3))}
+    onBlur={() => { const n = Math.min(999, Math.max(1, parseInt(v) || 1)); setV(String(n)); if (n !== value) onSet(n); }} />;
 }

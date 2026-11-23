@@ -352,8 +352,12 @@ button.danger-solid { background: #dc2626; color: #fff; }
 .stock.out { background: var(--bad-soft); color: var(--bad); }
 .facts .stock { display: inline-block; vertical-align: middle; }
 .stock.none { background: var(--raise); color: var(--mute); }
-.lot-meta .ax { font-weight: 650; color: var(--text); }
+.lot-meta .ax { font-weight: 650; color: var(--ink); }
 
 .label-row { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
 .stepper.sm { grid-template-columns: 40px 52px 40px; gap: 4px; flex: none; }
 .stepper.sm button, .stepper.sm input { min-height: 40px; height: 40px; }
+
+/* select nằm trong nhãn chữ nhỏ: giữ 16px để iPhone không tự phóng to trang */
+.lbl select, .lbl input { font-size: 16px; }
+@media (max-width: 400px) { .label-row { flex-wrap: wrap; } .label-row .grow { flex-basis: 100%; overflow-wrap: anywhere; } }

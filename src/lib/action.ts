@@ -23,19 +23,25 @@ const key = (v: string, brand: string | null, product: string | null) => product
 export const indexTerms = (terms: Term[]) => new Map(terms.map(t => [key(t.vendor_id, t.brand, t.product_id), t]));
 export const termAt = (idx: Map<string, Term>, vendor: string, brand: string | null = null, product: string | null = null) => idx.get(key(vendor, brand, product));
 
+// Thứ tự: cờ của sản phẩm (không đổi trả, Sành Điệu) → điều khoản riêng sản phẩm → sữa bột (chỉ nhắc; điều khoản
+// "Chỉ nhắc" của NCC / nhãn đè số ngày) → hàng Ân Nam → điều khoản nhãn → điều khoản NCC.
 export function termFor(p: LotProduct, idx: Map<string, Term>): TermInfo {
   if (p.no_return) return { kind: 'discount', days: null, why: 'Sản phẩm đánh dấu không đổi trả' };
   if (p.sanh_dieu) return { kind: 'discount', days: null, why: 'Hàng Sành Điệu' };
-  if (p.category && WATCH_CATEGORY.test(p.category.trim()) && !idx.has(key('', null, p.id))) return { kind: 'watch', days: WATCH_DAYS, why: 'Sữa bột' };
-  if (OWN_BRAND.has(normVendor(p.vendors?.code))) return { kind: 'discount', days: null, why: 'Hàng Ân Nam / Annam Gourmet' };
+  const byProduct = idx.get(key('', null, p.id));
+  if (byProduct) return fromTerm(byProduct, 'product');
   const v = p.vendor_id;
+  const byBrand = v && p.brand ? idx.get(key(v, p.brand, null)) : undefined, t = byBrand ?? (v ? idx.get(key(v, null, null)) : undefined);
+  if (p.category && WATCH_CATEGORY.test(p.category.trim()))
+    return t?.action === 'watch' && t.days ? fromTerm(t, byBrand ? 'brand' : 'vendor') : { kind: 'watch', days: WATCH_DAYS, why: 'Sữa bột' };
+  if (OWN_BRAND.has(normVendor(p.vendors?.code))) return { kind: 'discount', days: null, why: 'Hàng Ân Nam / Annam Gourmet' };
   if (!v) return { kind: 'discount', days: null, problem: 'Chưa có NCC' };
-  const byProduct = idx.get(key(v, null, p.id)), byBrand = p.brand ? idx.get(key(v, p.brand, null)) : undefined;
-  const t = byProduct ?? byBrand ?? idx.get(key(v, null, null));
-  const level = byProduct ? 'product' : byBrand ? 'brand' : 'vendor';
   if (!t) return { kind: 'discount', days: null, problem: 'Chưa có điều khoản' };
+  return fromTerm(t, byBrand ? 'brand' : 'vendor');
+}
+function fromTerm(t: Term, level: TermInfo['level']): TermInfo {
   if (t.needs_review || (t.action === 'return' && !t.days && !t.pct)) return { kind: 'discount', days: null, problem: 'Cần chọn điều khoản', raw: t.raw_text, level };
-  if (t.action === 'watch') return { kind: 'watch', days: t.days ?? 10, raw: t.raw_text, level };
+  if (t.action === 'watch') return { kind: 'watch', days: t.days ?? WATCH_DAYS, raw: t.raw_text, level };
   return t.action === 'return'
     ? { kind: 'return', days: t.days, pct: t.pct ?? null, raw: t.raw_text, level }
     : { kind: 'discount', days: null, why: 'NCC không đổi trả', raw: t.raw_text, level };

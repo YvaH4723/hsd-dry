@@ -129,7 +129,7 @@ function Editor({ b, pct, member, shelves, done }: { b: LotRow; pct: number | nu
   const noHsd = b.expiry_note === 'action_date';
   const [qty, setQty] = useState(String(b.qty));
   const [shelf, setShelf] = useState(b.shelf_id ?? '');
-  const [date, setDate] = useState<DateVal>({ exp: noHsd ? null : b.expiry_date, mfg: null, empty: noHsd });
+  const [date, setDate] = useState<DateVal>({ exp: noHsd ? null : b.expiry_date, mfg: b.mfg_date ?? null, empty: noHsd });
   const [checked, setChecked] = useState(false);
   const [noRet, setNoRet] = useState(!!b.no_return);
   const [busy, setBusy] = useState(false);
@@ -147,7 +147,8 @@ function Editor({ b, pct, member, shelves, done }: { b: LotRow; pct: number | nu
       done();
     } catch (e: any) { setMsg('Chưa lưu được: ' + e.message); setBusy(false); }
   }
-  const save = () => upd({ qty: n, shelf_id: shelf || null, expiry_date: exp, ...(date.mfg !== (b.mfg_date ?? null) && (date.mfg || exp !== b.expiry_date) ? { mfg_date: date.mfg } : {}), ...(clearNote ? { expiry_note: null } : {}), ...(noRet !== !!b.no_return ? { no_return: noRet } : {}) }, 'edit');
+  // Chỉ gửi số lượng khi có sửa: không ghi đè phần vừa được cộng dồn từ màn Thêm lô. NSX: chỉ xóa khi điều khoản cần NSX.
+  const save = () => upd({ ...(n !== b.qty ? { qty: n } : {}), shelf_id: shelf || null, expiry_date: exp, ...(date.mfg !== (b.mfg_date ?? null) && (date.mfg || pct) ? { mfg_date: date.mfg } : {}), ...(clearNote ? { expiry_note: null } : {}), ...(noRet !== !!b.no_return ? { no_return: noRet } : {}) }, 'edit');
 
   return (
     <div className="li-edit">

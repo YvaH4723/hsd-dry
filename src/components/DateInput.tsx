@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { addShelfLife, daysLeft, fmt, parseDmy } from '../lib/dates.ts';
 
-export interface DateVal { exp: string | null; mfg: string | null; empty: boolean }
+export interface DateVal { exp: string | null; mfg: string | null; empty: boolean; badMfg?: boolean }
 const MODE = 'hsd.dateMode';
 // Gõ số liền, app tự chèn dấu /: 300628 → 30/06/28.
 const typing = (s: string) => {
@@ -17,12 +17,17 @@ const back = (old: string, v: string) => v.length < old.length && v.replace(/\D/
 export default function DateInput({ onChange, initial, initialMfg, needMfg = false }: { onChange: (v: DateVal) => void; initial?: string; initialMfg?: string | null; needMfg?: boolean }) {
   const [mode, setMode] = useState<'hsd' | 'nsx'>(() => { try { return !initial && localStorage.getItem(MODE) === 'nsx' ? 'nsx' : 'hsd'; } catch { return 'hsd'; } });
   const [hsd, setHsd] = useState(initial ? typing(fmt(initial).replace(/\/(\d\d)(\d\d)$/, '/$2')) : '');   // 30/06/28: xóa bớt năm không thành năm 2020
-  const [nsx, setNsx] = useState(initialMfg ? typing(fmt(initialMfg)) : '');
+  const [nsx, setNsx] = useState(initialMfg ? typing(fmt(initialMfg).replace(/\/(\d\d)(\d\d)$/, '/$2')) : '');
   const [n, setN] = useState('');
   const [unit, setUnit] = useState<'month' | 'day'>('month');
 
   const calc = (m = mode, h = hsd, x = nsx, nn = n, u = unit): DateVal => {
-    if (m === 'hsd') return { exp: parseDmy(h), mfg: needMfg && x ? parseDmy(x) : null, empty: !h };
+    if (m === 'hsd') {
+      const exp = parseDmy(h), mfg = needMfg && x ? parseDmy(x) : null;
+      // NSX gõ dở hoặc không trước HSD: chưa cho lưu, tránh tính sai % hạn dùng.
+      if (exp && needMfg && x && (!mfg || mfg >= exp)) return { exp: null, mfg: null, empty: false, badMfg: true };
+      return { exp, mfg, empty: !h };
+    }
     const mfg = parseDmy(x);
     return { exp: mfg && +nn > 0 ? addShelfLife(mfg, +nn, u) : null, mfg, empty: !x && !nn };
   };
@@ -57,7 +62,7 @@ export default function DateInput({ onChange, initial, initialMfg, needMfg = fal
       <p className={`note ${cur.exp ? (d < 0 ? 'bad' : 'ok') : ''}`} style={{ marginTop: 6 }}>
         {cur.exp ? <>HSD <b className="num">{fmt(cur.exp)}</b> · {d < 0 ? `đã quá ${-d} ngày` : d === 0 ? 'hết hạn hôm nay' : `còn ${d} ngày`}</>
           : cur.empty ? (mode === 'hsd' ? 'Gõ 6 số ngày, tháng, năm. Ví dụ 300628 là 30/06/2028.' : 'Gõ NSX, rồi số tháng hoặc ngày in trên bao bì.')
-          : 'Ngày chưa đúng, kiểm tra lại.'}
+          : cur.badMfg ? 'NSX chưa đúng: gõ đủ 6 số và phải trước HSD.' : 'Ngày chưa đúng, kiểm tra lại.'}
       </p>
     </div>
   );

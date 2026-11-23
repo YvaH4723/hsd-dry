@@ -140,9 +140,10 @@ async function fetchTerms(store: string): Promise<Cfg> {
     saveTerms(t, s).catch(() => {});        // mất mạng mở lại app vẫn đúng điều khoản / cài đặt mới
     return { idx: indexTerms(t), ...settingsOf(s) };
   } catch (e) {
-    if (!isNet(e)) throw e;
-    const l = await localTerms();
-    return { idx: indexTerms(l.terms), ...settingsOf(l.store) };
+    // Mất mạng, hay máy chủ tạm lỗi (5xx, hết phiên): dùng bản lưu trên máy, không thì báo lỗi chứ không tính với bảng rỗng.
+    const l = await localTerms().catch(() => null);
+    if (l?.terms?.length) return { idx: indexTerms(l.terms), ...settingsOf(l.store) };
+    throw e;
   }
 }
 export function reloadTerms() { termsCache = null; termSubs.forEach(f => f()); }
@@ -157,7 +158,7 @@ export function useTerms(store: string): (Cfg & { reload: () => void }) | null {
   useEffect(() => {
     if (!termsCache || termsCache.store !== store || Date.now() - termsCache.at > 5 * 60000) termsCache = { store, at: Date.now(), p: fetchTerms(store) };
     let live = true;
-    termsCache.p.then(c => live && setState(c), () => { termsCache = null; if (live) setState({ idx: new Map(), ...settingsOf(null) }); });
+    termsCache.p.then(c => live && setState(c), () => { termsCache = null; if (live) setTimeout(() => live && setN(x => x + 1), 15000); });   // lỗi: chưa tính, thử lại sau 15 giây
     return () => { live = false; };
   }, [store, n]);
   return state && { ...state, reload: reloadTerms };

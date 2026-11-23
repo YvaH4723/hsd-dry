@@ -59,7 +59,8 @@ export default function Scanner({ onCode, auto = false }: { onCode: (code: strin
       }).catch(() => {});
       // Đợi khung camera hiện ra (đang ẩn) rồi mới phát: iPhone phát vào khung đang ẩn thì hay ra màn đen.
       await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-      const v = video.current!, cur = s;
+      if (stream.current !== s || !video.current) { s.getTracks().forEach(t => t.stop()); return; }   // vừa bấm Tắt / rời màn
+      const v = video.current, cur = s;
       // Một số máy / trình duyệt cũ tự phóng video toàn màn hình nếu thiếu các thuộc tính này.
       v.setAttribute('playsinline', ''); v.setAttribute('webkit-playsinline', ''); v.muted = true; v.srcObject = s; await v.play().catch(() => {});
       setTimeout(() => {
@@ -117,10 +118,10 @@ export default function Scanner({ onCode, auto = false }: { onCode: (code: strin
   async function photo(f?: File) {
     if (!f) return;
     try {
-      const bmp = await createImageBitmap(f, { resizeWidth: 1600, resizeQuality: 'high' });   // ảnh 12MP làm máy cũ treo
-      const r = await (await getDetector()).detect(bmp).catch(() => []);
-      const code = r[0]?.rawValue ?? scanImage(bmp, bmp.width, bmp.height, false);
-      bmp.close();
+      const bmp = await createImageBitmap(f, { resizeWidth: 1600, resizeQuality: 'high' }).catch(() => createImageBitmap(f));   // ảnh 12MP làm máy cũ treo
+      let code: string | null = null;
+      try { code = (await (await getDetector()).detect(bmp).catch(() => []))[0]?.rawValue ?? scanImage(bmp, bmp.width, bmp.height, false); }
+      finally { bmp.close(); }
       code ? emit(code) : setMsg('Không đọc được mã trong ảnh. Chụp gần, đủ sáng, giữ thẳng.');
     } catch (e: any) { setMsg('Lỗi đọc ảnh: ' + e.message); }
   }

@@ -51,7 +51,7 @@ export default function Import({ member }: { member: Member }) {
       setIds(new Map(ex.map(e => [e.ax, e.id!])));
       if (r.length && TB_COL in r[0]) {
         const vs = await fetchAll<{ code: string; name: string }>((a, b) => supabase.from('vendors').select('code,name').eq('store_id', store).is('deleted_at', null).order('code').range(a, b));
-        setRows(r); setPrev(diffTB(r, ex, new Map(vs.map(v => [vendorKey(v.name), v.code]))));
+        setRows(r); setPrev(diffTB(r, ex, new Map(vs.sort((a, b) => +!a.code.startsWith('TB-') - +!b.code.startsWith('TB-')).map(v => [vendorKey(v.name), v.code]))));   // NCC thật đè NCC tạm TB-*
       } else { setRows(r); setPrev(diffCatalog(r, ex)); }
       setMsg('');
     } catch (e: any) { setMsg('Lỗi: ' + e.message); }
@@ -65,15 +65,16 @@ export default function Import({ member }: { member: Member }) {
       const write = [...prev.added, ...prev.updated.map(u => u.item)];
       setMsg('Đang ghi NCC…');
       const vend = new Map(write.map(i => [i.vendorCode, i.vendorName]));
-      const vrows = [...vend].filter(([c]) => c).map(([code, name]) => ({ store_id: store, code, name: name || code }));
+      const vrows = [...vend].filter(([c]) => c).map(([code, name]) => ({ store_id: store, code, name: name || code, named: !!name }));
       const vid = new Map<string, string>();
-      for (const c of chunks(vrows, 500)) {
-        const { data, error } = await supabase.from('vendors').upsert(c, { onConflict: 'store_id,code', ignoreDuplicates: prev.mode === 'tb' }).select('id,code');
+      // Dòng thiếu tên NCC: chỉ thêm NCC mới, không đổi tên NCC đã có thành mã.
+      for (const [rows, keep] of [[vrows.filter(v => v.named), prev.mode === 'tb'], [vrows.filter(v => !v.named), true]] as const) for (const c of chunks(rows.map(({ named, ...v }) => v), 500)) {
+        const { data, error } = await supabase.from('vendors').upsert(c, { onConflict: 'store_id,code', ignoreDuplicates: keep }).select('id,code');
         if (error) throw error;
         data.forEach(v => vid.set(v.code, v.id));
       }
       // File tổng TB không đổi tên NCC đã có: chỉ thêm NCC mới, rồi lấy id của tất cả.
-      if (prev.mode === 'tb') (await fetchAll<{ id: string; code: string }>((a, b) => supabase.from('vendors').select('id,code').eq('store_id', store).order('code').range(a, b)))
+      if (prev.mode === 'tb' || vrows.some(v => !v.named)) (await fetchAll<{ id: string; code: string }>((a, b) => supabase.from('vendors').select('id,code').eq('store_id', store).order('code').range(a, b)))
         .forEach(v => vid.set(v.code, v.id));
       const pid = new Map<string, string>();
       if (prev.mode === 'tb') {
@@ -138,7 +139,7 @@ export default function Import({ member }: { member: Member }) {
           File Cadencia tổng TB (có cột Product number): lấy hàng của tất cả các quầy, thêm sản phẩm app chưa có và điền NCC, giá còn trống; không sửa tên, không ẩn gì.
           Cả hai không đụng lô HSD, kệ.
         </p>
-        <input type="file" accept=".xlsx,.xls" aria-label="Chọn file Cadencia" disabled={busy} onChange={e => pick(e.target.files?.[0])} />
+        <input type="file" accept=".xlsx,.xls" aria-label="Chọn file Cadencia" disabled={busy} onChange={e => { pick(e.target.files?.[0]); e.target.value = ''; }} />
         {msg && <p className={msg.startsWith('Lỗi') ? 'msg bad' : 'note'}>{msg}</p>}
       </div>
       {prev && (
@@ -213,7 +214,7 @@ function ContactImport({ store }: { store: string }) {
     <div className="panel">
       <h2>Điều khoản đổi trả (Contact List)</h2>
       <p className="note">Đọc sheet DRY. Không lấy tên buyer. Điều khoản đã sửa tay trong app được giữ nguyên.</p>
-      <input type="file" accept=".xlsx,.xls" aria-label="Chọn file Contact List" disabled={busy} onChange={e => pick(e.target.files?.[0])} />
+      <input type="file" accept=".xlsx,.xls" aria-label="Chọn file Contact List" disabled={busy} onChange={e => { pick(e.target.files?.[0]); e.target.value = ''; }} />
       {msg && <p className={msg.startsWith('Lỗi') ? 'msg bad' : 'note'}>{msg}</p>}
       {vt && (
         <>
@@ -276,12 +277,15 @@ function StockImport({ store }: { store: string }) {
         }
       }
       let n = 0;
+      const runAt = new Date(Date.now() - 1000).toISOString();
       for (const [k, c] of chunks(my, 2000).entries()) {
         setMsg(`Đang ghi số tồn ${Math.min((k + 1) * 2000, my.length)}/${my.length}…`);
         const { data, error } = await supabase.rpc('set_stock', { p_store: store, p_rows: c.map(i => ({ ax: i.ax, q: i.qty })) });
         if (error) throw error;
         n += data ?? 0;
       }
+      // File đủ (không bị cắt): sản phẩm có số tồn từ lần trước mà nay không còn dòng nào trong file thì bỏ số cũ (hiện ô xám).
+      if (!f.truncated) { const { error } = await supabase.rpc('clear_stock', { p_store: store, p_before: runAt }); if (error) throw error; }
       await supabase.from('import_runs').insert({ store_id: store, kind: 'stock', added: added.length, updated: n });
       setMsg(`Xong: cập nhật tồn ${n} sản phẩm, thêm mới ${added.length}.`);
       setRows(null);

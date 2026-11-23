@@ -23,14 +23,14 @@ export function parseStock(rows: Record<string, unknown>[], wh: string): StockFi
   let truncated = false, other = 0;
   for (const r of rows) {
     const w = txt(r['Warehouse ID'] ?? r['Warehouse']), ax = txt(r['Product ID'] ?? r['Item number']).toUpperCase();
-    if (/exceeded|omitted/i.test(w)) truncated = true;
+    if (/exceeded|omitted/i.test(w + ' ' + ax)) { truncated = true; continue; }   // dòng cảnh báo cuối file (cột đầu tùy kiểu file)
     if (!ax) continue;
     whs.add(w);
     if (w !== wh) continue;
     const l1 = txt(r['Category Name Level 1']), l2 = txt(r['Category Name Level 2']), l3 = txt(r['Category Name Level 3']);
     const dry = hasCat ? isDry(l1, l2) : null;
     if (dry === false) { other++; continue; }
-    const q = Number(r['Physical Inventory Quantity'] ?? r['Physical inventory']) || 0;
+    const q = Number(String(r['Physical Inventory Quantity'] ?? r['Physical inventory'] ?? '').replace(/,/g, '')) || 0;
     const it = by.get(ax);
     if (it) { it.qty += q; continue; }
     // Product name bị cắt ở 60 ký tự; Search name có khi đầy đủ hơn, có khi lại là tên công ty: chỉ dùng khi nó nối tiếp tên.

@@ -74,7 +74,7 @@ export default function App() {
     if (!session) { setMember(undefined); return; }
     supabase.from('members').select('*').eq('user_id', session.user.id).order('created_at').limit(1).maybeSingle()
       .then(({ data, error }) => {
-        if (error && isNet(error)) return setMember(cachedMember(session.user.id));   // mất mạng: dùng thông tin đã lưu
+        if (error) return setMember(cachedMember(session.user.id));   // mất mạng / máy chủ tạm lỗi: dùng thông tin đã lưu, không đá ra màn "Chưa vào cửa hàng"
         const m = (data as Member) ?? null;
         setMember(m);
         try { if (m) localStorage.setItem(MEMBER_KEY, JSON.stringify({ uid: session.user.id, member: m })); else localStorage.removeItem(MEMBER_KEY); } catch { /* bỏ qua */ }

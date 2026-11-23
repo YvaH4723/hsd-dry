@@ -178,6 +178,16 @@ console.log('Quy tắc: OK');
   assert.equal(decodeRuns(r), '8936091201908');
   assert.equal(decodeRuns([...r].reverse()), null);                       // đọc ngược: không ra mã sai
   assert.equal(decodeRuns(r.map((w, i) => i === 20 ? w + 30 : w)), null); // hỏng một vạch: sai số kiểm tra, bỏ
+  // Vạch in mảnh / loang (0.5 – 1.3 module): bù theo vạch mở đầu, không đọc ra mã khác.
+  const L = [[3, 2, 1, 1], [2, 2, 2, 1], [2, 1, 2, 2], [1, 4, 1, 1], [1, 1, 3, 2], [1, 2, 3, 1], [1, 1, 1, 4], [1, 3, 1, 2], [1, 2, 1, 3], [3, 1, 1, 2]];
+  const PAR = ['LLLLLL', 'LLGLGG', 'LLGGLG', 'LLGGGL', 'LGLLGG', 'LGGLLG', 'LGGGLL', 'LGLGLG', 'LGLGGL', 'LGGLGL'];
+  const enc = (code: string, bar: number) => {
+    const d = [...code].map(Number), w = [1, 1, 1];
+    d.slice(1, 7).forEach((x, i) => w.push(...(PAR[d[0]][i] === 'L' ? L[x] : [...L[x]].reverse())));
+    w.push(1, 1, 1, 1, 1); d.slice(7).forEach(x => w.push(...L[x])); w.push(1, 1, 1);
+    return w.map((x, k) => Math.round((x + (k % 2 ? 1 - bar : bar - 1)) * 10));
+  };
+  for (const code of ['8734600100007', '8936091201908', '0012044046272']) for (const bar of [0.5, 0.57, 0.8, 1, 1.3]) assert.equal(decodeRuns(enc(code, bar)), code, `ean ${code} vạch ${bar}`);
   console.log('ean ok');
 }
 const [cadPath, conPath] = process.argv.slice(2);

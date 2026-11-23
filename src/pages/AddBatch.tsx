@@ -4,7 +4,7 @@ import { codeVariants, findByCode, pname, PRODUCT_COLS, searchProducts, useNames
 import { actionFor, termFor } from '../lib/action.ts';
 import { localAddCodes, addBatchOffline, incrBatchOffline, isNet, loadBatches } from '../lib/offline.ts';
 import { daysLeft, fmt, whoLine } from '../lib/dates.ts';
-import ProductInfo, { ProductRow, confirmAttach, attachCode } from '../components/ProductInfo.tsx';
+import ProductInfo, { ProductRow, confirmAttach, attachCode, codeOwner } from '../components/ProductInfo.tsx';
 import ActionLine from '../components/ActionLine.tsx';
 import Scanner from '../components/Scanner.tsx';
 import DateInput, { type DateVal } from '../components/DateInput.tsx';
@@ -47,7 +47,11 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
     return () => { live = false; };
   }, [product?.id]);
 
-  const choose = (p: Product) => { setProduct(p); setUnknown(''); setQ(''); setHits(null); };
+  // Đổi sang sản phẩm khác: bỏ cờ "không đổi trả"; đã gõ NSX cho món trước thì xóa ô ngày (HSD gõ trước rồi quét thì giữ).
+  const choose = (p: Product) => {
+    if (p.id !== product?.id) { setNoRet(false); if (date.mfg) { setDate(NO_DATE); setDateKey(k => k + 1); } }
+    setProduct(p); setUnknown(''); setQ(''); setHits(null);
+  };
   const pickShelf = (id: string) => { setShelf(id); try { localStorage.setItem(LAST_SHELF, id); } catch { /* */ } };
 
   async function onCode(code: string) {
@@ -109,7 +113,7 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
       const row = { product_id: product.id, shelf_id: shelf || null, qty: n, expiry_date: date.exp, mfg_date: date.mfg, no_return: noRet };
       const view = { ...row, expiry_note: null, status: 'on_shelf', shelves: sh ? { name: sh.name } : null,
         products: { id: product.id, name: product.name, name_vi: product.name_vi, ax_code: product.ax_code, brand: product.brand, vendor_id: product.vendor_id,
-          no_return: product.no_return, sanh_dieu: product.sanh_dieu, vendors: product.vendors ?? null } };
+          no_return: product.no_return, sanh_dieu: product.sanh_dieu, category: product.category, vendors: product.vendors ?? null } };
       const { offline } = await addBatchOffline(store, row, view);
       setSaved(s => [`${pname(product)} · SL ${n} · HSD ${fmt(date.exp!)}${offline ? ' · chờ gửi' : ''}`, ...s].slice(0, 5));
       reset(offline ? 'Đã lưu trên máy (đang mất mạng), có mạng sẽ tự gửi. Quét món tiếp theo.' : 'Đã lưu. Quét món tiếp theo.');
@@ -223,6 +227,8 @@ function NewProduct({ store, code, name: initName, created }: { store: string; c
   async function save() {
     setBusy(true); setErr('');
     try {
+      const owner = await codeOwner(store, code);                          // mã đã thuộc sản phẩm khác: không tạo sản phẩm mồ côi
+      if (owner) return setErr(`Mã ${code} đang thuộc "${owner}". Tìm sản phẩm đó ở ô tìm phía trên, hoặc gỡ mã ở sản phẩm đó trước.`);
       const { data, error } = await supabase.from('products').insert({
         store_id: store, name: name.trim(), ax_code: ax.trim() || null, price: parseInt(price.replace(/\D/g, '')) || null,
         active: true, category: 'Tạo trong app',

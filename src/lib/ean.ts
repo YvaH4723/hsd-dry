@@ -24,13 +24,18 @@ export function decodeRuns(runs: number[]): string | null {
     const ok = (k: number) => r[k] > m * 0.4 && r[k] < m * 1.8;
     if (![0, 1, 2, 27, 28, 29, 30, 31].every(ok)) continue;              // vạch mở đầu, giữa
     if (i > 0 && runs[i - 1] < m * 3) continue;                            // trước vạch mở đầu phải là vùng trắng
+    // Bù độ loang / co mực: vạch mở đầu và vạch giữa đều 1 module, đo xem vạch mảnh hơn khoảng trắng bao nhiêu.
+    const d = ((r[1] + r[27] + r[29] + r[31]) - (r[0] + r[2] + r[28] + r[30])) / 8;
+    const cr = r.map((w, k) => w + (k % 2 ? -d : d));
+    const okSum = (k: number) => { const s = cr[k] + cr[k + 1] + cr[k + 2] + cr[k + 3]; return s > m * 5.5 && s < m * 8.5; };
     const ds: number[] = []; let par = '', bad = false;
     for (let k = 3; k < 27 && !bad; k += 4) {
-      const w = r.slice(k, k + 4), a = digit(w, L), b = digit(w, G);
+      if (!okSum(k)) { bad = true; break; }
+      const w = cr.slice(k, k + 4), a = digit(w, L), b = digit(w, G);
       if (!a && !b) bad = true;
       else if (a && (!b || a[1] <= b[1])) { ds.push(a[0]); par += 'L'; } else { ds.push(b![0]); par += 'G'; }
     }
-    for (let k = 32; k < 56 && !bad; k += 4) { const a = digit(r.slice(k, k + 4), L); a ? ds.push(a[0]) : bad = true; }
+    for (let k = 32; k < 56 && !bad; k += 4) { const a = okSum(k) && digit(cr.slice(k, k + 4), L); a ? ds.push(a[0]) : bad = true; }
     const first = PAR.indexOf(par);
     if (bad || first < 0) continue;
     const c = [first, ...ds], s = c.slice(0, 12).reduce((a, v, j) => a + v * (j % 2 ? 3 : 1), 0);

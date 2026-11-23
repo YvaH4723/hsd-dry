@@ -71,7 +71,7 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
     <>
       <button className="back" onClick={() => setOpen(null)}><Icon name="back" size={20} />Quay lại</button>
       <div className="panel">
-        <ProductInfo p={open} member={member} terms={terms} onChange={p => { if (p.barcodes?.length) attached.add(p.id); setOpen(p); setRows(r => r && r.map(x => x.id === p.id ? p : x)); setAll(r => r && r.map(x => x.id === p.id ? p : x)); }} />
+        <ProductInfo p={open} member={member} terms={terms} onChange={p => { p.barcodes?.length ? attached.add(p.id) : attached.delete(p.id); const up = (r: Product[] | null) => r && r.map(x => x.id === p.id ? p : x); setOpen(p); setRows(up); setAll(up); setCat(up); }} />
       </div>
       {canWrite(member) && <button className="pri block" onClick={() => onAdd(open)}><Icon name="plus" size={18} />Thêm lô cho sản phẩm này</button>}
       <div className="sec"><h2>Lô đang theo dõi</h2></div>

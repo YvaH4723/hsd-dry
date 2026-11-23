@@ -83,6 +83,7 @@ export async function refreshSnapshot(store: string) {
       fetchAll<Shelf>((a, b) => supabase.from('shelves').select('*').eq('store_id', store).is('deleted_at', null).order('sort_order').order('name').range(a, b) as any),
       supabase.from('stores').select('*').eq('id', store).single(),
     ]);
+    if (st.error) throw st.error;                                     // không ghi đè cài đặt đã lưu bằng giá trị rỗng
     await Promise.all([put('products', products), put('terms', terms), put('shelves', shelves), put('store', st.data)]);
     await loadBatches(store, {});            // cũng lưu các lô về máy
     mem = null;
@@ -156,7 +157,7 @@ export type Op =
   | { opId: string; kind: 'insert'; table: 'batches'; row: Record<string, unknown>; view: any }
   | { opId: string; kind: 'update'; table: 'batches'; id: string; patch: Record<string, unknown>; view?: Record<string, unknown>; base?: string }
   | { opId: string; kind: 'incr'; table: 'batches'; id: string; n: number; view?: Record<string, unknown> }
-  | { opId: string; kind: 'audit'; row: Record<string, unknown> };
+  | { opId: string; kind: 'audit'; row: Record<string, unknown>; parent?: string };
 
 let lock: Promise<unknown> = Promise.resolve();
 function withOutbox<T>(fn: (box: Op[]) => Promise<[Op[], T]> | [Op[], T]): Promise<T> {
@@ -190,9 +191,11 @@ async function updateOne(id: string, patch: Record<string, unknown>, base?: stri
     const { data: cur, error: e2 } = await supabase.from('batches').select('updated_at').eq('id', id).maybeSingle();
     if (e2) return { error: e2 };                                       // rớt mạng giữa chừng: giữ trong hàng đợi, thử lại sau
     if (cur && Object.keys(patch).every(k => k !== 'updated_at') ) {
-      const { data: now } = await supabase.from('batches').select(Object.keys(patch).join(',') + ',updated_at').eq('id', id).maybeSingle();
-      // Lần gửi trước đã ghi nhưng mất trả lời: máy chủ đã đúng như mình muốn, coi như xong.
-      if (now && Object.entries(patch).every(([k, v]) => String((now as any)[k] ?? null) === String(v ?? null))) { await remember(id, (now as any).updated_at); return { error: null }; }
+      const { data: now, error: e3 } = await supabase.from('batches').select(Object.keys(patch).join(',') + ',updated_at').eq('id', id).maybeSingle();
+      if (e3) return { error: e3 };                                     // rớt mạng giữa chừng: giữ lại, thử sau
+      // Lần gửi trước đã ghi nhưng mất trả lời: máy chủ đã đúng như mình muốn, coi như xong. Giờ so theo thời điểm (…Z vs …+00:00).
+      const same = (a: unknown, b: unknown) => String(a ?? null) === String(b ?? null) || (typeof a === 'string' && typeof b === 'string' && /T\d/.test(a) && Date.parse(a) === Date.parse(b));
+      if (now && Object.entries(patch).every(([k, v]) => same((now as any)[k], v))) { await remember(id, (now as any).updated_at); return { error: null }; }
     }
     if (cur) return { error: { app: true, message: `Người khác đã sửa lô này lúc ${hm(cur.updated_at)} nên thay đổi của bạn chưa ghi. Mở lô xem lại, cần thì làm lại` } };
   }
@@ -230,38 +233,50 @@ export function flush(): Promise<void> {
         : op.kind === 'incr' ? await incrOne(op.id, op.n, op.opId)
         : await supabase.from('audit_log').insert(op.row);
       if (error && (isNet(error) || isAuth(error) || !final(error))) break;   // mất mạng / phiên hết hạn / máy chủ tạm lỗi: giữ lại, thử sau
-      if (error) {                                                      // máy chủ từ chối: bỏ thao tác, báo cho người dùng
+      if (error && waiting.has(op.opId)) rejected.set(op.opId, error.message);   // người dùng đang chờ: báo ngay trên màn
+      else if (error) {                                                 // máy chủ từ chối: bỏ thao tác, báo cho người dùng
         const v: any = op.kind === 'audit' ? null : op.view, nm = v?.products ? (v.products.name_vi || v.products.name) : '';
         const what = op.kind === 'insert' ? `Thêm lô ${nm} · HSD ${op.row.expiry_date} · SL ${op.row.qty}` : op.kind === 'update' ? `Sửa lô ${nm} (${Object.keys(op.patch).join(', ')})` : op.kind === 'incr' ? `Cộng ${op.n} vào lô ${nm}` : 'Nhật ký';
         const f = [...state.failed, `${what}: ${error.message}`];
         await put('failed', f); emit({ failed: f });
       }
-      await withOutbox(box => [box.filter(o => o.opId !== op.opId), null]);
+      // Thao tác bị từ chối thì bỏ luôn dòng nhật ký đi kèm, để Lịch sử không ghi nhầm người làm.
+      await withOutbox(box => [box.filter(o => o.opId !== op.opId && !(error && o.kind === 'audit' && o.parent === op.opId)), null]);
     }
   })().finally(() => { flushing = null; });
 }
 
+// Có mạng mà máy chủ từ chối (người khác vừa sửa lô, hết quyền…): báo lỗi ngay cho màn đang chờ, không báo "Đã lưu".
+const waiting = new Set<string>(), rejected = new Map<string, string>();
 async function enqueue(...ops: Op[]) {
-  await withOutbox(box => [[...box, ...ops], null]);
-  const left = async () => ((await get<Op[]>('outbox')) ?? []).some(b => ops.some(o => o.opId === b.opId));
-  await flush();
-  if (await left()) await flush();       // lần gửi trước vừa kết thúc đúng lúc thêm vào: gửi lại một lượt
-  return { offline: await left() };
+  const main = ops[0].opId;
+  waiting.add(main);
+  try {
+    await withOutbox(box => [[...box, ...ops], null]);
+    const left = async () => ((await get<Op[]>('outbox')) ?? []).some(b => ops.some(o => o.opId === b.opId));
+    await flush();
+    if (await left()) await flush();       // lần gửi trước vừa kết thúc đúng lúc thêm vào: gửi lại một lượt
+    const bad = rejected.get(main);
+    if (bad) throw new Error(bad);
+    return { offline: await left() };
+  } finally { waiting.delete(main); rejected.delete(main); }
 }
 
 const uid = () => crypto.randomUUID();
-const auditOp = (store: string, batch_id: string, action: string, before: unknown, after: unknown): Op =>
-  ({ opId: uid(), kind: 'audit', row: { store_id: store, batch_id, action, before, after, at: new Date().toISOString() } });
+const auditOp = (store: string, batch_id: string, action: string, before: unknown, after: unknown, parent?: string): Op =>
+  ({ opId: uid(), kind: 'audit', parent, row: { store_id: store, batch_id, action, before, after, at: new Date().toISOString() } });
 
 export function addBatchOffline(store: string, row: Record<string, unknown>, view: any) {
-  const id = uid(), full = { ...row, id, store_id: store, created_at: new Date().toISOString() };   // thêm lúc mất mạng vẫn đúng ngày thêm
-  return enqueue({ opId: uid(), kind: 'insert', table: 'batches', row: full, view: { ...view, id } }, auditOp(store, id, 'add', null, full));
+  const id = uid(), op = uid(), full = { ...row, id, store_id: store, created_at: new Date().toISOString() };   // thêm lúc mất mạng vẫn đúng ngày thêm
+  return enqueue({ opId: op, kind: 'insert', table: 'batches', row: full, view: { ...view, id } }, auditOp(store, id, 'add', null, full, op));
 }
 export function updateBatchOffline(store: string, id: string, patch: Record<string, unknown>, action: string, before: unknown, view?: Record<string, unknown>, base?: string) {
-  return enqueue({ opId: uid(), kind: 'update', table: 'batches', id, patch, view, base }, auditOp(store, id, action, before, patch));
+  const op = uid();
+  return enqueue({ opId: op, kind: 'update', table: 'batches', id, patch, view, base }, auditOp(store, id, action, before, patch, op));
 }
 export function incrBatchOffline(store: string, id: string, n: number, before: unknown, view?: Record<string, unknown>) {
-  return enqueue({ opId: uid(), kind: 'incr', table: 'batches', id, n, view }, auditOp(store, id, 'add_qty', before, { add: n }));
+  const op = uid();
+  return enqueue({ opId: op, kind: 'incr', table: 'batches', id, n, view }, auditOp(store, id, 'add_qty', before, { add: n }, op));
 }
 export const auditOffline = (store: string, batch_id: string, action: string, before: unknown, after: unknown) => enqueue(auditOp(store, batch_id, action, before, after));
 

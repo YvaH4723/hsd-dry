@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase } from '../supabase.ts';
 import { fetchAll, isNet } from '../lib/offline.ts';
 import { pname, settingsOf } from '../lib/db.ts';
+import { saveXlsx } from '../lib/xlsxSave.ts';
 import { actionFor, indexTerms, type Term } from '../lib/action.ts';
 
 const STATUS: Record<string, string> = { on_shelf: 'Trên kệ', discounted: 'Đã giảm giá', return_notified: 'Đã báo trả', returned: 'NCC đã lấy', discarded: 'Đã hủy', sold_out: 'Bán hết' };
@@ -18,7 +19,7 @@ export default function Backup({ store }: { store: string }) {
       setMsg('Đang tải dữ liệu…');
       const q = (t: string, cols: string, order = 'id') => fetchAll<any>((a, b) => supabase.from(t).select(cols).eq('store_id', store).order(order).range(a, b));
       const [lots, products, vendors, terms, shelves, st] = await Promise.all([
-        q('batches', 'id,qty,expiry_date,expiry_note,mfg_date,status,deleted_at,updated_at,shelves(name),products(id,name,name_vi,ax_code,brand,vendor_id,no_return,sanh_dieu,category,vendors(code,name))'),
+        q('batches', 'id,qty,expiry_date,expiry_note,mfg_date,no_return,status,deleted_at,updated_at,shelves(name),products(id,name,name_vi,ax_code,brand,vendor_id,no_return,sanh_dieu,category,vendors(code,name))'),
         q('products', 'ax_code,name,name_vi,brand,price,category,dept_group,active,no_return,sanh_dieu,deleted_at,vendors(code,name),barcodes(code)'),
         q('vendors', 'id,code,name', 'code'),
         q('terms', 'vendor_id,brand,product_id,action,days,pct,raw_text,needs_review,source,deleted_at'),
@@ -36,7 +37,7 @@ export default function Backup({ store }: { store: string }) {
         return {
           'Mã AX': l.products?.ax_code, 'Sản phẩm': pname(l.products), 'Tên gốc': l.products?.name, 'NCC': l.products?.vendors?.name, 'Mã NCC': l.products?.vendors?.code,
           'Kệ': l.shelves?.name, 'SL': l.qty, 'HSD': l.expiry_note === 'action_date' ? '' : l.expiry_date,
-          'NSX': l.mfg_date, 'Ghi chú ngày': NOTE[l.expiry_note] ?? '', 'Việc phải làm': a.kind === 'return' ? 'Báo trả' : a.kind === 'watch' ? 'Kiểm hạn' : a.kind === 'discount' ? 'Dán giảm giá' : 'Nhắc',
+          'NSX': l.mfg_date, 'Không đổi trả': l.no_return ? 'x' : '', 'Ghi chú ngày': NOTE[l.expiry_note] ?? '', 'Việc phải làm': a.kind === 'return' ? 'Báo trả' : a.kind === 'watch' ? 'Kiểm hạn' : a.kind === 'discount' ? 'Dán giảm giá' : 'Nhắc',
           'Ngày phải làm': a.date, 'Trạng thái': STATUS[l.status] ?? l.status, 'Đã xóa': l.deleted_at ? 'x' : '', 'Sửa lần cuối': l.updated_at, 'id': l.id,
         };
       }));
@@ -47,13 +48,13 @@ export default function Backup({ store }: { store: string }) {
       })));
       add('Điều khoản', terms.filter(t => !t.deleted_at).map(t => ({
         'Mã NCC': vname.get(t.vendor_id)?.code, 'NCC': vname.get(t.vendor_id)?.name, 'Nhãn hàng': t.brand ?? '', 'Riêng sản phẩm': t.product_id ? 'x' : '',
-        'Loại': t.needs_review ? 'Cần chọn tay' : t.action === 'return' ? 'Báo trả' : t.action === 'watch' ? 'Chỉ nhắc' : 'Giảm giá', 'Số ngày': t.days, 'Câu gốc': t.raw_text, 'Nguồn': t.source === 'manual' ? 'Sửa tay' : 'File',
+        'Loại': t.needs_review ? 'Cần chọn tay' : t.action === 'return' ? 'Báo trả' : t.action === 'watch' ? 'Chỉ nhắc' : 'Giảm giá', 'Số ngày': t.days, '% hạn dùng': t.pct, 'Câu gốc': t.raw_text, 'Nguồn': t.source === 'manual' ? 'Sửa tay' : 'File',
       })));
       add('NCC', vendors.map(v => ({ 'Mã NCC': v.code, 'Tên': v.name })));
       add('Kệ', shelves.filter(s => !s.deleted_at).map(s => ({ 'Kệ': s.name, 'Mã QR': s.qr_code, 'Thứ tự': s.sort_order })));
       add('Cài đặt', [{ 'Giảm giá trước HSD (ngày)': cfg.discountDays, 'Báo trả sớm thêm (ngày)': cfg.returnBuffer }]);
       const d = new Date(), stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      XLSX.writeFile(wb, `hsd-dry-sao-luu-${stamp}.xlsx`);
+      await saveXlsx(wb, `hsd-dry-sao-luu-${stamp}.xlsx`);
       setMsg(`Đã xuất: ${lots.length} lô, ${products.length} sản phẩm, ${terms.length} điều khoản.`);
     } catch (e: any) { setMsg(isNet(e) ? 'Lỗi: đang mất mạng, cần có mạng để sao lưu.' : 'Lỗi: ' + e.message); }
     setBusy(false);

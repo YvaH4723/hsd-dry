@@ -57,7 +57,7 @@ export function diffCatalog(rows: Record<string, unknown>[], existing: Existing[
     const e = old.get(it.ax);
     if (!e) return p.added.push(it);
     const changes = [
-      e.name !== it.name && 'tên', e.price !== it.price && 'giá', e.vendorCode !== it.vendorCode && 'NCC', e.brand != null && (e.brand || '') !== (it.brand || '') && 'nhãn', !e.active && 'bán lại',
+      e.name !== it.name && 'tên', e.price !== it.price && 'giá', e.vendorCode !== it.vendorCode && 'NCC', e.brand != null && (e.brand || '') !== (it.brand || '') && 'nhãn', !!it.category && (e.category || '') !== it.category && 'nhóm', !e.active && 'bán lại',
     ].filter(Boolean) as string[];
     changes.length ? p.updated.push({ item: it, changes }) : p.unchanged++;
   });

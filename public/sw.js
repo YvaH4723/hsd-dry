@@ -9,8 +9,10 @@ self.addEventListener('activate', e => e.waitUntil(
 self.addEventListener('fetch', e => {
   const r = e.request, u = new URL(r.url);
   if (r.method !== 'GET' || u.origin !== location.origin || !u.href.startsWith(APP)) return;
-  if (r.mode === 'navigate') {
-    if (u.origin + u.pathname !== APP && u.origin + u.pathname !== APP + 'index.html') return;   // trang thử quét: đi thẳng ra mạng
+  const page = u.origin + u.pathname === APP || u.origin + u.pathname === APP + 'index.html';
+  // Trang app (mở app, hoặc app tự hỏi "có bản mới không"): luôn hỏi mạng trước, mất mạng mới dùng bản đã lưu.
+  if (r.mode === 'navigate' || page) {
+    if (!page) return;                                                  // trang thử quét: đi thẳng ra mạng
     e.respondWith(fetch(r).then(res => { if (res.ok) { const cp = res.clone(); caches.open(CACHE).then(c => c.put(APP, cp)); } return res; })
       .catch(() => caches.match(APP)));
     return;

@@ -13,9 +13,15 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.ready.then(() => caches.open('hsd-v2')).then(c => {
     const base = location.origin + import.meta.env.BASE_URL;
     const urls = performance.getEntriesByType('resource').map(e => e.name).filter(u => u.startsWith(base) && !u.includes('/thu-quet/index'));
-    // Bỏ file js/css của các bản cũ cho cache khỏi phình sau mỗi lần cập nhật.
-    c.keys().then(ks => ks.forEach(k => { if (k.url.includes('/assets/') && !urls.includes(k.url)) c.delete(k); }));
-    return c.addAll([...new Set([base, ...urls])]);
+    // Bỏ file js/css của các bản cũ cho cache khỏi phình. Phần tải sau (đọc Excel…) có tên trong file js chính: giữ lại và lưu sẵn.
+    const main = document.querySelector<HTMLScriptElement>('script[src*="/assets/index-"]')?.src;
+    return (main ? fetch(main).then(r => r.text()).catch(() => '') : Promise.resolve('')).then(js => {
+      const lazy = [...new Set([...js.matchAll(/(?:\.\/|assets\/)([\w.-]+\.js)\b/g)].map(m => base + 'assets/' + m[1]))];
+      const keep = new Set([...urls, ...lazy]);
+      c.keys().then(ks => ks.forEach(k => { if (k.url.includes('/assets/') && !keep.has(k.url)) c.delete(k); }));
+      lazy.forEach(u => c.match(u).then(hit => { if (!hit) return c.add(u); }).catch(() => {}));   // tên đoán sai thì bỏ qua
+      return c.addAll([...new Set([base, ...urls])]);
+    });
   }).catch(() => {});
 }
 

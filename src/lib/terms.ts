@@ -17,7 +17,9 @@ export function parseTerm(value: unknown): ParsedTerm {
   if (/^no\b/i.test(s)) return { action: 'return', days: null, review: true, raw };
 
   // "Yes - Food: 36days - NF: 216 days": quầy Dry lấy phần Food
-  const food = /\n/.test(raw) ? null : /^yes\b.*?(?<![\w-])Food:\s*(\d+)\s*d/i.exec(s);
+  // "Non Food: …" (cách bằng dấu cách), "Fresh food", "Dry food", hay kèm ngoại lệ "(trừ …)": không đoán, vào Cần xem.
+  const food = /\n/.test(raw) || /\b(fresh|dry)\s+food\b/i.test(s) ? null : /^yes\b.*?(?<![\w-])(?<!non\s)Food:\s*(\d+)\s*d/i.exec(s);
+  if (food && /\(|\btrừ\b|except/i.test(s.slice(food.index + food[0].length))) return { action: 'return', days: null, review: true, raw };
   if (food) return +food[1] ? { action: 'return', days: +food[1], review: false, raw } : { action: 'discount', days: null, review: false, raw };
 
   // "30% shelf life", "Yes - 65% remaining": trả khi còn N% hạn dùng (tính từ NSX). Câu có điều kiện khác vẫn vào Cần xem.
