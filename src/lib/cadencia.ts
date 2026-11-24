@@ -56,6 +56,7 @@ export function diffCatalog(rows: Record<string, unknown>[], existing: Existing[
     it.barcodes.forEach(b => seenBc.set(b, it.ax || it.name));
     const e = old.get(it.ax);
     if (!e) return p.added.push(it);
+    if (!it.brand && e.brand) it.brand = e.brand;   // file để trống nhãn thì giữ nhãn đã đặt tay (vd. Monge → điều khoản 1 năm)
     const changes = [
       e.name !== it.name && 'tên', e.price !== it.price && 'giá', e.vendorCode !== it.vendorCode && 'NCC', e.brand != null && (e.brand || '') !== (it.brand || '') && 'nhãn', !!it.category && (e.category || '') !== it.category && 'nhóm', !e.active && 'bán lại',
     ].filter(Boolean) as string[];
