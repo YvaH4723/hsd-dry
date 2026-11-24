@@ -18,7 +18,9 @@ const rpc = async (fn: string, body: object) => {
 
 const d = await rpc('push_export', { p_token: token });
 webpush.setVapidDetails('https://yvah4723.github.io/hsd-dry/', VAPID_PUBLIC, d.vapid);
-const afternoon = new Date().getHours() >= 12;
+const hour = new Date().getHours(), afternoon = hour >= 12;
+if (hour < 6 || hour >= 21) { console.log('Giờ', hour, ': ban đêm, không gửi'); process.exit(0); }   // GitHub hay chạy trễ nhiều giờ
+
 let sent = 0;
 for (const s of d.stores) {
   const subs = d.subs.filter((x: any) => x.store_id === s.id);
