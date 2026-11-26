@@ -236,12 +236,22 @@ function ContactImport({ store }: { store: string }) {
 // Tồn kho (file On-hand inventory hoặc Stock On Hand của D365): cập nhật số tồn hàng quầy Dry của một kho,
 // thêm sản phẩm còn tồn mà app chưa có. Không đụng tên, giá, NCC, lô HSD của sản phẩm đã có.
 const WH_KEY = 'hsd.stock-wh';
+const vnDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });   // YYYY-MM-DD
+// Tên file On-hand_inventory_<ticks .NET>.xlsx cho biết lúc xuất file.
+export const fileDay = (name: string) => {
+  const t = /(\d{18})/.exec(name)?.[1];
+  return t ? vnDay(new Date(Number((BigInt(t) - 621355968000000000n) / 10000n))) : null;
+};
 function StockImport({ store }: { store: string }) {
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
   const [wh, setWh] = useState(() => localStorage.getItem(WH_KEY) || 'RGSTBP');
   const [known, setKnown] = useState<Map<string, Known>>(new Map());
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+  const today = vnDay(new Date());
+  const [day, setDay] = useState(today);
+  const [latest, setLatest] = useState('');
+  const old = !!latest && day < latest;   // đã có số liệu mới hơn: file này chỉ ghi lịch sử bán hàng
   const f: StockFile | null = rows && parseStock(rows, wh);
   const my = f ? f.items.filter(i => mine(i, known.get(i.ax))) : [];
   const added = my.filter(i => i.qty > 0 && !known.has(i.ax));
@@ -249,11 +259,13 @@ function StockImport({ store }: { store: string }) {
 
   async function pick(file?: File) {
     if (!file) return;
-    setBusy(true); setRows(null); setMsg('Đang đọc file…');
+    setBusy(true); setRows(null); setMsg('Đang đọc file…'); setDay(fileDay(file.name) ?? vnDay(new Date()));
     try {
       const r = await readRows(file, STOCK_COLS, 'On-hand inventory / Stock On Hand');
       const ex = await fetchAll<{ ax_code: string; active: boolean; dept_group: string | null }>((a, b) => supabase.from('products').select('ax_code,active,dept_group').eq('store_id', store).not('ax_code', 'is', null).is('deleted_at', null).order('ax_code').range(a, b));
       setKnown(new Map(ex.map(e => [e.ax_code.trim().toUpperCase(), e])));
+      const h = await supabase.from('stock_history').select('day').eq('store_id', store).order('day', { ascending: false }).limit(1);
+      setLatest(h.data?.[0]?.day ?? '');
       const whs = parseStock(r, wh).warehouses;
       if (whs.length && !whs.includes(wh)) setWh(whs[0]);
       setRows(r); setMsg('');
@@ -266,6 +278,13 @@ function StockImport({ store }: { store: string }) {
     setBusy(true);
     try {
       localStorage.setItem(WH_KEY, wh);
+      if (old) {
+        setMsg('Đang ghi lịch sử…');
+        const { data, error } = await supabase.rpc('stock_history_set', { p_store: store, p_day: day, p_rows: my.map(i => ({ ax: i.ax, q: i.qty })), p_full: !f.truncated });
+        if (error) throw error;
+        setMsg(`Xong: ghi số tồn ngày ${day.split('-').reverse().join('/')} của ${data} sản phẩm vào lịch sử bán hàng.`);
+        setRows(null); setBusy(false); return;
+      }
       if (added.length) {
         setMsg(`Đang thêm ${added.length} sản phẩm mới…`);
         const vs = await fetchAll<{ id: string; code: string }>((a, b) => supabase.from('vendors').select('id,code').eq('store_id', store).is('deleted_at', null).order('code').range(a, b));
@@ -308,6 +327,10 @@ function StockImport({ store }: { store: string }) {
               <select value={wh} onChange={e => setWh(e.target.value)}>{f.warehouses.map(w => <option key={w}>{w}</option>)}</select>
             </label>
           )}
+          <label className="lbl">Số liệu ngày
+            <input type="date" value={day} max={today} onChange={e => setDay(e.target.value || today)} />
+          </label>
+          {old && <p className="msg warn">Đã có số liệu ngày mới hơn nên file này chỉ ghi vào lịch sử để tính hàng bán chạy, không đổi số tồn hiện tại.</p>}
           {f.truncated && <p className="msg warn">File bị cắt bớt: hệ thống chỉ xuất tối đa một số dòng nên có thể thiếu sản phẩm. Khi xuất, lọc chỉ kho {wh} để file đủ.</p>}
           <div className="stats">
             <div><b>{my.length}</b>SP quầy Dry</div>
@@ -316,7 +339,7 @@ function StockImport({ store }: { store: string }) {
             <div><b className="mute">{(f.items.length - my.length) + f.other}</b>Quầy khác (bỏ)</div>
           </div>
           {unsure > 0 && <p className="note">{unsure} sản phẩm còn tồn chưa có trong app và file không ghi nhóm hàng (thường là Fresh, đồ uống) nên không thêm.</p>}
-          {added.slice(0, 10).map(i => <p className="note" key={i.ax}>Thêm: {i.ax} {i.name} · tồn {i.qty}</p>)}
+          {!old && added.slice(0, 10).map(i => <p className="note" key={i.ax}>Thêm: {i.ax} {i.name} · tồn {i.qty}</p>)}
           <button className="pri block" disabled={busy || !my.length} onClick={apply}>Xác nhận ghi</button>
         </>
       )}
