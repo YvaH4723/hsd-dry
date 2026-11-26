@@ -6,6 +6,7 @@ import Login from './pages/Login.tsx';
 import Products from './pages/Products.tsx';
 import Import from './pages/Import.tsx';
 import Labels from './pages/Labels.tsx';
+import Sales from './pages/Sales.tsx';
 import Shelves from './pages/Shelves.tsx';
 import AddBatch from './pages/AddBatch.tsx';
 import BatchList from './components/BatchList.tsx';
@@ -29,7 +30,7 @@ const cachedMember = (uid?: string): Member | null => {
 };
 
 type Tab = 'today' | 'expiry' | 'products' | 'shelves' | 'more';
-type Sub = 'terms' | 'import' | 'settings' | 'members' | 'history' | 'data' | 'labels' | null;
+type Sub = 'terms' | 'import' | 'settings' | 'members' | 'history' | 'data' | 'labels' | 'sales' | null;
 const TITLE: Record<Tab, string> = { today: 'Hôm nay', expiry: 'Hết hạn', products: 'Sản phẩm', shelves: 'Kệ', more: 'Khác' };
 const NAV: [Tab | 'add', string, IconName][] = [['today', 'Hôm nay', 'today'], ['expiry', 'Hết hạn', 'expiry'], ['add', 'Thêm lô', 'plus'], ['products', 'Sản phẩm', 'box'], ['shelves', 'Kệ', 'shelf']];
 
@@ -163,11 +164,12 @@ function More({ member, email, uid, sub, setSub }: { member: Member; email?: str
   if (sub) return (
     <>
       <button className="back" onClick={() => setSub(null)}><Icon name="back" size={20} />Khác</button>
-      {sub === 'labels' ? <Labels member={member} /> : sub === 'terms' ? <Terms member={member} /> : sub === 'import' ? <Import member={member} /> : sub === 'settings' ? <Settings member={member} /> : sub === 'members' ? <Members member={member} myId={uid} /> : sub === 'history' ? <History member={member} />
+      {sub === 'labels' ? <Labels member={member} /> : sub === 'sales' ? <Sales member={member} /> : sub === 'terms' ? <Terms member={member} /> : sub === 'import' ? <Import member={member} /> : sub === 'settings' ? <Settings member={member} /> : sub === 'members' ? <Members member={member} myId={uid} /> : sub === 'history' ? <History member={member} />
         : <><h2 className="title">Dữ liệu và sao lưu</h2><SyncPanel store={member.store_id} /><Backup store={member.store_id} /></>}
     </>
   );
   const items: [Exclude<Sub, null>, IconName, string, string][] = [
+    ['sales', 'trend', 'Hàng bán chạy', 'Bán chạy, sắp hết cần đặt, bán chậm (từ file tồn kho)'],
     ['labels', 'printer', 'In biển tên', 'Quét sản phẩm cần in biển, xuất Excel cho phần mềm in'],
     ['history', 'checkCircle', 'Lịch sử, khôi phục', 'Lô đã xử lý, đã xóa: xem ai làm, khôi phục khi bấm nhầm'],
     ['terms', 'clipboard', 'Điều khoản đổi trả', 'Tra và sửa điều khoản của từng NCC, nhãn hàng'],

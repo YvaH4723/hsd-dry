@@ -35,7 +35,7 @@ for (const s of d.stores) {
     if (a.kind === 'watch') { if (left <= 0) n.rem++; continue; }
     if (left <= SOON) a.kind === 'discount' ? n.disc++ : a.kind === 'reminder' ? n.rem++ : n.ret++;
   }
-  const parts = [n.exp && `${n.exp} lô quá HSD`, n.ret && `${n.ret} cần báo trả NCC`, n.disc && `${n.disc} cần dán giảm giá`, n.pick && `${n.pick} chờ NCC lấy`, n.rem && `${n.rem} cần kiểm hạn`].filter(Boolean);
+  const parts = [n.exp && `${n.exp} lô quá HSD`, n.ret && `${n.ret} cần báo trả NCC`, n.disc && `${n.disc} cần dán giảm giá`, n.pick && `${n.pick} chờ NCC lấy`, n.rem && `${n.rem} cần kiểm hạn`, s.low > 0 && `${s.low} hàng bán chạy sắp hết`].filter(Boolean);
   if (!parts.length) continue;
   console.log('Cửa hàng', s.id.slice(0, 8), parts.join(' · '), subs.length, 'máy');
   const payload = JSON.stringify({ title: afternoon ? 'HSD Dry · nhắc lại chiều nay' : 'HSD Dry · việc hôm nay', body: parts.join(' · '), url: 'https://yvah4723.github.io/hsd-dry/' });
