@@ -196,6 +196,9 @@ const [cadPath, conPath] = process.argv.slice(2);
     const L = [{ name: 'Acecook Oyster&Cheese', name_vi: 'Mì vị hàu & phô mai' }, { name: 'Pu-Erh Tea', name_vi: 'Trà Phổ Nhĩ' }, { name: 'Aji Quick Pho Seasoning', name_vi: 'Gia vị phở' }];
     const r = byAccent(L, 'Phở'); if (r.length !== 1 || !r[0].name.startsWith('Aji')) throw new Error('accent ' + JSON.stringify(r));
     if (byAccent(L, 'pho').length !== 3) throw new Error('no accent');
+    const M = [{ name: 'Pho Bo Noodle' }, { name: 'X', name_vi: 'Trà hòa an' }, { name: 'Y', name_vi: 'Sữa khoẻ' }, { name: 'Z', name_vi: 'phô mai' }];
+    const k = (q: string) => byAccent(M, q).map(p => p.name).join();
+    if (k('phở') !== 'Pho Bo Noodle' || k('hoà') !== 'X' || k('hò') !== 'X' || k('khỏe') !== 'Y' || k('thúy') !== k('pho')) throw new Error('accent2 ' + [k('phở'), k('hoà'), k('hò'), k('khỏe')]);
     console.log('accent ok');
   } }
 

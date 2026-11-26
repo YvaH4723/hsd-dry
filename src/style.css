@@ -360,4 +360,4 @@ button.danger-solid { background: #dc2626; color: #fff; }
 
 /* select nằm trong nhãn chữ nhỏ: giữ 16px để iPhone không tự phóng to trang */
 .lbl select, .lbl input { font-size: 16px; }
-@media (max-width: 400px) { .label-row { flex-wrap: wrap; } .label-row .grow { flex-basis: 100%; overflow-wrap: anywhere; } }
+@media (max-width: 400px) { .label-row:not(.keep) { flex-wrap: wrap; } .label-row:not(.keep) .grow { flex-basis: 100%; } .label-row .grow { min-width: 0; overflow-wrap: anywhere; } }

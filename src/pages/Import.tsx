@@ -239,7 +239,7 @@ const WH_KEY = 'hsd.stock-wh';
 const vnDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });   // YYYY-MM-DD
 // Tên file On-hand_inventory_<ticks .NET>.xlsx cho biết lúc xuất file.
 export const fileDay = (name: string) => {
-  const t = /(\d{18})/.exec(name)?.[1];
+  const t = /(?<!\d)(\d{18})(?!\d)/.exec(name)?.[1];
   return t ? vnDay(new Date(Number((BigInt(t) - 621355968000000000n) / 10000n))) : null;
 };
 function StockImport({ store }: { store: string }) {
@@ -265,6 +265,7 @@ function StockImport({ store }: { store: string }) {
       const ex = await fetchAll<{ ax_code: string; active: boolean; dept_group: string | null }>((a, b) => supabase.from('products').select('ax_code,active,dept_group').eq('store_id', store).not('ax_code', 'is', null).is('deleted_at', null).order('ax_code').range(a, b));
       setKnown(new Map(ex.map(e => [e.ax_code.trim().toUpperCase(), e])));
       const h = await supabase.from('stock_history').select('day').eq('store_id', store).order('day', { ascending: false }).limit(1);
+      if (h.error) throw h.error;
       setLatest(h.data?.[0]?.day ?? '');
       const whs = parseStock(r, wh).warehouses;
       if (whs.length && !whs.includes(wh)) setWh(whs[0]);
@@ -301,14 +302,15 @@ function StockImport({ store }: { store: string }) {
       const runAt = new Date(Date.now() - 1000).toISOString();
       for (const [k, c] of chunks(my, 2000).entries()) {
         setMsg(`Đang ghi số tồn ${Math.min((k + 1) * 2000, my.length)}/${my.length}…`);
-        const { data, error } = await supabase.rpc('set_stock', { p_store: store, p_rows: c.map(i => ({ ax: i.ax, q: i.qty })) });
+        const { data, error } = await supabase.rpc('set_stock', { p_store: store, p_rows: c.map(i => ({ ax: i.ax, q: i.qty })), p_day: day });
         if (error) throw error;
         n += data ?? 0;
       }
       // File đủ (không bị cắt): sản phẩm có số tồn từ lần trước mà nay không còn dòng nào trong file thì bỏ số cũ (hiện ô xám).
-      if (!f.truncated) { const { error } = await supabase.rpc('clear_stock', { p_store: store, p_before: runAt }); if (error) throw error; }
+      let cleared = 0;
+      if (!f.truncated) { const { data, error } = await supabase.rpc('clear_stock', { p_store: store, p_before: runAt, p_day: day }); if (error) throw error; cleared = data ?? 0; }
       await supabase.from('import_runs').insert({ store_id: store, kind: 'stock', added: added.length, updated: n });
-      setMsg(`Xong: cập nhật tồn ${n} sản phẩm, thêm mới ${added.length}.`);
+      setMsg(`Xong: cập nhật tồn ${n} sản phẩm, thêm mới ${added.length}.` + (cleared < 0 ? ` Cảnh báo: ${-cleared} sản phẩm có tồn mà không có trong file — quá nhiều nên KHÔNG xóa số tồn cũ. Kiểm lại file (đúng kho ${wh}, đủ dòng).` : ''));
       setRows(null);
       refreshSnapshot(store);
     } catch (e: any) { setMsg('Lỗi khi ghi (chọn lại file để làm tiếp): ' + e.message); }

@@ -7,10 +7,11 @@ import Icon from '../components/Icon.tsx';
 
 interface Row { product_id: string; ax_code: string | null; name: string; name_vi: string | null; vendor: string | null; stock: number | null; sold: number; span: number }
 type Tab = 'top' | 'low' | 'slow';
-const COVER = 7;                     // tồn đủ dưới 7 ngày bán = cần đặt
+const COVER = 7;
+const SHOW = 200;                    // iPhone: hiện tối đa 200 dòng, còn lại xuất Excel                     // tồn đủ dưới 7 ngày bán = cần đặt
 const fmt = (n: number) => n >= 10 ? Math.round(n).toLocaleString('vi-VN') : n.toLocaleString('vi-VN', { maximumFractionDigits: 1 });
 const rate = (r: Row) => r.span > 0 ? r.sold / r.span : 0;
-const cover = (r: Row) => rate(r) > 0 ? (r.stock ?? 0) / rate(r) : Infinity;
+const cover = (r: Row) => rate(r) > 0 ? Math.max(0, r.stock ?? 0) / rate(r) : Infinity;
 const nm = (r: Row) => r.name_vi || r.name;
 
 export default function Sales({ member }: { member: Member }) {
@@ -21,10 +22,12 @@ export default function Sales({ member }: { member: Member }) {
   const [err, setErr] = useState('');
 
   useEffect(() => {
+    let live = true;
     setRows(null); setErr('');
     fetchAll<Row>((a, b) => supabase.rpc('sales_report', { p_store: store, p_days: days }).range(a, b))
-      .then(r => setRows(r.map(x => ({ ...x, sold: Number(x.sold), stock: x.stock == null ? null : Number(x.stock) }))))
-      .catch(e => setErr(isNet(e) ? 'Đang mất mạng: báo cáo cần có mạng.' : 'Lỗi: ' + e.message));
+      .then(r => live && setRows(r.map(x => ({ ...x, sold: Number(x.sold), stock: x.stock == null ? null : Number(x.stock) }))))
+      .catch(e => live && setErr(isNet(e) ? 'Đang mất mạng: báo cáo cần có mạng.' : 'Lỗi: ' + e.message));
+    return () => { live = false; };
   }, [days]);
 
   const all = rows ?? [], span = Math.max(0, ...all.map(r => r.span));
@@ -55,11 +58,11 @@ export default function Sales({ member }: { member: Member }) {
       {err && <p className="note bad">{err}</p>}
       {!rows && !err && <p className="note">Đang tính…</p>}
       {rows && span < COVER && <p className="note warn">Mới có số liệu {span} ngày, cần nhập file tồn kho đều đặn khoảng 1–2 tuần thì báo cáo mới chính xác.</p>}
-      {rows && <p className="note">{tab === 'top' ? 'Xếp theo số bán mỗi ngày.' : tab === 'low' ? `Bán được mà tồn chỉ đủ dưới ${COVER} ngày (gồm cả hàng đã hết).` : `Còn tồn nhưng không bán được cái nào trong ${span} ngày qua.`} {list.length} sản phẩm.</p>}
+      {rows && <p className="note">{tab === 'top' ? 'Xếp theo số bán mỗi ngày.' : tab === 'low' ? `Bán được mà tồn chỉ đủ dưới ${COVER} ngày (gồm cả hàng đã hết).` : `Còn tồn nhưng không bán được cái nào trong ${span} ngày qua.`} {list.length} sản phẩm{list.length > SHOW ? `, hiện ${SHOW} đầu, xem hết bằng Xuất Excel` : ''}.</p>}
       {list.length > 0 && <>
         <div className="list">
-          {list.map(r => (
-            <div className="li label-row" key={r.product_id}>
+          {list.slice(0, SHOW).map(r => (
+            <div className="li label-row keep" key={r.product_id}>
               <div className="grow">
                 <div>{nm(r)}</div>
                 <div className="note num">{r.ax_code ?? '—'}{r.vendor ? ' · ' + r.vendor : ''}</div>

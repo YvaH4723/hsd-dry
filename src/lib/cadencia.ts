@@ -56,7 +56,7 @@ export function diffCatalog(rows: Record<string, unknown>[], existing: Existing[
     it.barcodes.forEach(b => seenBc.set(b, it.ax || it.name));
     const e = old.get(it.ax);
     if (!e) return p.added.push(it);
-    if (!it.brand && e.brand) it.brand = e.brand;   // file để trống nhãn thì giữ nhãn đã đặt tay (vd. Monge → điều khoản 1 năm)
+    if (!it.brand && e.brand && e.vendorCode === it.vendorCode) it.brand = e.brand;   // file để trống nhãn thì giữ nhãn đã đặt tay (vd. Monge → điều khoản 1 năm)
     const changes = [
       e.name !== it.name && 'tên', e.price !== it.price && 'giá', e.vendorCode !== it.vendorCode && 'NCC', e.brand != null && (e.brand || '') !== (it.brand || '') && 'nhãn', !!it.category && (e.category || '') !== it.category && 'nhóm', !e.active && 'bán lại',
     ].filter(Boolean) as string[];
@@ -108,9 +108,17 @@ export function diffTB(rows: Record<string, unknown>[], existing: Existing[], co
 }
 
 // Gõ có dấu ("phở") thì chỉ giữ tên đúng dấu, bỏ "phô mai", "Phổ Nhĩ"…; không có món nào đúng dấu thì giữ nguyên.
+// Tên có chữ không dấu khớp (tên tiếng Anh "Pho Bo") thì vẫn giữ. Dấu kiểu cũ/mới (hoà/hòa, khoẻ/khỏe, thuý/thúy) coi như nhau.
+const TONE = '[\u0300\u0301\u0303\u0309\u0323]';
+const vn = (x: string) => x.normalize('NFD').toLowerCase()
+  .replace(new RegExp(`([o])([ae])(${TONE})(?![\\p{L}\\p{M}])`, 'gu'), '$1$3$2')
+  .replace(new RegExp(`(?<!q)(u)(y)(${TONE})(?![\\p{L}\\p{M}])`, 'gu'), '$1$3$2');
 export function byAccent<T extends { name: string; name_vi?: string | null }>(list: T[], q: string): T[] {
-  const low = (x: string) => x.normalize('NFC').toLowerCase(), words = low(q).split(/\s+/).filter(Boolean);
   if (unaccent(q) === q.toLowerCase()) return list;
-  const hit = list.filter(p => words.every(w => unaccent(w) === w || low(`${p.name} ${p.name_vi ?? ''}`).includes(w)));
+  const words = vn(q).split(/\s+/).filter(Boolean);
+  const hit = list.filter(p => {
+    const t = `${p.name} ${p.name_vi ?? ''}`, v = vn(t), plain = t.normalize('NFC').toLowerCase();
+    return words.every(w => unaccent(w) === w || v.includes(w) || new RegExp(`(^|[^\\p{L}])${unaccent(w).replace(/\W/g, '\\$&')}`, 'u').test(plain));
+  });
   return hit.length ? hit : list;
 }
