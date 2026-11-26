@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '../supabase.ts';
-import { unaccent } from './cadencia.ts';
+import { byAccent, unaccent } from './cadencia.ts';
 import { saveTerms, auditOffline, codeVariants, fetchAll, isNet, localByVendor, localFindByCode, localSearch, localShelves, localTerms, localVendors } from './offline.ts';
 export { BATCH_COLS, codeVariants, fetchAll } from './offline.ts';
 
@@ -53,9 +53,10 @@ export async function searchProducts(store: string, q: string, limit = 50, vendo
   const byName = words.map(w => `name_search.ilike.*${w}*`).join(',');
   let qb = supabase.from('products').select(PRODUCT_COLS).eq('store_id', store).is('deleted_at', null);
   if (vendorId) qb = qb.eq('vendor_id', vendorId);
-  const r = await qb.or(`and(${byName}),ax_code.ilike.${words[0]}*`).order('active', { ascending: false }).order('name').limit(limit);
-  if (r.error && isNet(r.error)) return fromLocal(async () => (await localSearch(s, vendorId ? 100000 : limit)).filter(p => !vendorId || p.vendor_id === vendorId).slice(0, limit));
-  return { data: (r.data as unknown as Product[]) ?? [], error: r.error };
+  const accented = unaccent(s) !== s.toLowerCase(), n = accented ? 1000 : limit;   // gõ có dấu: lấy rộng rồi lọc đúng dấu
+  const r = await qb.or(`and(${byName}),ax_code.ilike.${words[0]}*`).order('active', { ascending: false }).order('name').limit(n);
+  if (r.error && isNet(r.error)) return fromLocal(async () => byAccent((await localSearch(s, 100000)).filter(p => !vendorId || p.vendor_id === vendorId), s).slice(0, limit));
+  return { data: byAccent((r.data as unknown as Product[]) ?? [], s).slice(0, limit), error: r.error };
 }
 
 // NCC và toàn bộ sản phẩm của một NCC (mất mạng thì lấy trong bản sao trên máy).

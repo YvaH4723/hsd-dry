@@ -106,3 +106,11 @@ export function diffTB(rows: Record<string, unknown>[], existing: Existing[], co
   });
   return p;
 }
+
+// Gõ có dấu ("phở") thì chỉ giữ tên đúng dấu, bỏ "phô mai", "Phổ Nhĩ"…; không có món nào đúng dấu thì giữ nguyên.
+export function byAccent<T extends { name: string; name_vi?: string | null }>(list: T[], q: string): T[] {
+  const low = (x: string) => x.normalize('NFC').toLowerCase(), words = low(q).split(/\s+/).filter(Boolean);
+  if (unaccent(q) === q.toLowerCase()) return list;
+  const hit = list.filter(p => words.every(w => unaccent(w) === w || low(`${p.name} ${p.name_vi ?? ''}`).includes(w)));
+  return hit.length ? hit : list;
+}

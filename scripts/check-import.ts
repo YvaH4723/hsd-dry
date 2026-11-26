@@ -191,6 +191,14 @@ console.log('Quy tắc: OK');
   console.log('ean ok');
 }
 const [cadPath, conPath] = process.argv.slice(2);
+{ const { byAccent } = await import('../src/lib/cadencia.ts');
+  if (byAccent) {
+    const L = [{ name: 'Acecook Oyster&Cheese', name_vi: 'Mì vị hàu & phô mai' }, { name: 'Pu-Erh Tea', name_vi: 'Trà Phổ Nhĩ' }, { name: 'Aji Quick Pho Seasoning', name_vi: 'Gia vị phở' }];
+    const r = byAccent(L, 'Phở'); if (r.length !== 1 || !r[0].name.startsWith('Aji')) throw new Error('accent ' + JSON.stringify(r));
+    if (byAccent(L, 'pho').length !== 3) throw new Error('no accent');
+    console.log('accent ok');
+  } }
+
 if (!cadPath) process.exit(0);
 const cad: Record<string, unknown>[] = JSON.parse(readFileSync(cadPath, 'utf8')).filter((r: any) => r['AX Code']);
 const con: Record<string, unknown>[] = JSON.parse(readFileSync(conPath, 'utf8')).filter((r: any) => r['VENDOR CODE']);
@@ -210,4 +218,5 @@ const review = vendors.filter(v => v.review);
 console.log(`NCC trong Contact List: ${vendors.length} — báo trả ${vendors.filter(v => !v.review && v.action === 'return').length}, giảm giá ${vendors.filter(v => !v.review && v.action === 'discount').length}, cần xem ${review.length}`);
 console.log(`NCC của Cadencia không có điều khoản: ${missing.size} (${items.filter(i => missing.has(i.vendorCode)).length} SP)`);
 console.log('\nCẦN XEM:\n' + review.map(v => `- ${v.code} | ${v.raw.replace(/\n/g, ' / ')}`).join('\n'));
+
 
