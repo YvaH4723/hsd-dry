@@ -240,7 +240,8 @@ const vnDay = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Ch
 // Tên file On-hand_inventory_<ticks .NET>.xlsx cho biết lúc xuất file.
 export const fileDay = (name: string) => {
   const t = /(?<!\d)(\d{18})(?!\d)/.exec(name)?.[1];
-  return t ? vnDay(new Date(Number((BigInt(t) - 621355968000000000n) / 10000n))) : null;
+  const d = t ? vnDay(new Date(Number((BigInt(t) - 621355968000000000n) / 10000n))) : '';
+  return d >= '2020-01-01' && d <= vnDay(new Date()) ? d : null;   // không phải ticks hợp lệ thì bỏ
 };
 function StockImport({ store }: { store: string }) {
   const [rows, setRows] = useState<Record<string, unknown>[] | null>(null);
@@ -299,7 +300,9 @@ function StockImport({ store }: { store: string }) {
         }
       }
       let n = 0;
-      const runAt = new Date(Date.now() - 1000).toISOString();
+      const sn = await supabase.rpc('server_now');   // giờ máy chủ: đồng hồ điện thoại lệch thì clear_stock xóa nhầm
+      if (sn.error) throw sn.error;
+      const runAt = sn.data as string;
       for (const [k, c] of chunks(my, 2000).entries()) {
         setMsg(`Đang ghi số tồn ${Math.min((k + 1) * 2000, my.length)}/${my.length}…`);
         const { data, error } = await supabase.rpc('set_stock', { p_store: store, p_rows: c.map(i => ({ ax: i.ax, q: i.qty })), p_day: day });
@@ -330,14 +333,14 @@ function StockImport({ store }: { store: string }) {
             </label>
           )}
           <label className="lbl">Số liệu ngày
-            <input type="date" value={day} max={today} onChange={e => setDay(e.target.value || today)} />
+            <input type="date" value={day} max={today} onChange={e => setDay(e.target.value && e.target.value < today ? e.target.value : today)} />
           </label>
           {old && <p className="msg warn">Đã có số liệu ngày mới hơn nên file này chỉ ghi vào lịch sử để tính hàng bán chạy, không đổi số tồn hiện tại.</p>}
           {f.truncated && <p className="msg warn">File bị cắt bớt: hệ thống chỉ xuất tối đa một số dòng nên có thể thiếu sản phẩm. Khi xuất, lọc chỉ kho {wh} để file đủ.</p>}
           <div className="stats">
             <div><b>{my.length}</b>SP quầy Dry</div>
             <div><b className="ok">{my.filter(i => i.qty > 0).length}</b>Còn tồn</div>
-            <div><b className="ok">{added.length}</b>Thêm mới</div>
+            {!old && <div><b className="ok">{added.length}</b>Thêm mới</div>}
             <div><b className="mute">{(f.items.length - my.length) + f.other}</b>Quầy khác (bỏ)</div>
           </div>
           {unsure > 0 && <p className="note">{unsure} sản phẩm còn tồn chưa có trong app và file không ghi nhóm hàng (thường là Fresh, đồ uống) nên không thêm.</p>}

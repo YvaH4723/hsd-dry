@@ -16,10 +16,10 @@ const rpc = async (fn: string, body: object) => {
   return r.status === 204 ? null : r.json();
 };
 
-const d = await rpc('push_export', { p_token: token });
-webpush.setVapidDetails('https://yvah4723.github.io/hsd-dry/', VAPID_PUBLIC, d.vapid);
 const hour = new Date().getHours(), afternoon = hour >= 12;
 if (hour < 6 || hour >= 21) { console.log('Giờ', hour, ': ban đêm, không gửi'); process.exit(0); }   // GitHub hay chạy trễ nhiều giờ
+const d = await rpc('push_export', { p_token: token });
+webpush.setVapidDetails('https://yvah4723.github.io/hsd-dry/', VAPID_PUBLIC, d.vapid);
 
 let sent = 0;
 for (const s of d.stores) {

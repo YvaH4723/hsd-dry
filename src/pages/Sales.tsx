@@ -8,7 +8,9 @@ import Icon from '../components/Icon.tsx';
 interface Row { product_id: string; ax_code: string | null; name: string; name_vi: string | null; vendor: string | null; stock: number | null; sold: number; span: number }
 type Tab = 'top' | 'low' | 'slow';
 const COVER = 7;
-const SHOW = 200;                    // iPhone: hiện tối đa 200 dòng, còn lại xuất Excel                     // tồn đủ dưới 7 ngày bán = cần đặt
+const SHOW = 200;
+const MIN_SPAN = 3;                  // dưới 3 ngày số liệu thì chưa xếp hạng (2 mốc cách 1 ngày dễ ra tốc độ ảo)
+const vnDay = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });                    // iPhone: hiện tối đa 200 dòng, còn lại xuất Excel                     // tồn đủ dưới 7 ngày bán = cần đặt
 const fmt = (n: number) => n >= 10 ? Math.round(n).toLocaleString('vi-VN') : n.toLocaleString('vi-VN', { maximumFractionDigits: 1 });
 const rate = (r: Row) => r.span > 0 ? r.sold / r.span : 0;
 const cover = (r: Row) => rate(r) > 0 ? Math.max(0, r.stock ?? 0) / rate(r) : Infinity;
@@ -20,6 +22,7 @@ export default function Sales({ member }: { member: Member }) {
   const [tab, setTab] = useState<Tab>('top');
   const [rows, setRows] = useState<Row[] | null>(null);
   const [err, setErr] = useState('');
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -28,21 +31,24 @@ export default function Sales({ member }: { member: Member }) {
       .then(r => live && setRows(r.map(x => ({ ...x, sold: Number(x.sold), stock: x.stock == null ? null : Number(x.stock) }))))
       .catch(e => live && setErr(isNet(e) ? 'Đang mất mạng: báo cáo cần có mạng.' : 'Lỗi: ' + e.message));
     return () => { live = false; };
-  }, [days]);
+  }, [days, store]);
 
-  const all = rows ?? [], span = Math.max(0, ...all.map(r => r.span));
-  const list = tab === 'top' ? all.filter(r => r.sold > 0).sort((a, b) => rate(b) - rate(a)).slice(0, 100)
-    : tab === 'low' ? all.filter(r => r.sold > 0 && cover(r) < COVER).sort((a, b) => cover(a) - cover(b) || rate(b) - rate(a))
+  const all = rows ?? [], span = Math.min(days, Math.max(0, ...all.map(r => r.span)));
+  const list = tab === 'top' ? all.filter(r => r.sold > 0 && r.span >= MIN_SPAN).sort((a, b) => rate(b) - rate(a)).slice(0, 100)
+    : tab === 'low' ? all.filter(r => r.span >= MIN_SPAN && rate(r) >= 1 && cover(r) < COVER).sort((a, b) => cover(a) - cover(b) || rate(b) - rate(a))
     : all.filter(r => r.sold === 0 && (r.stock ?? 0) > 0 && r.span >= COVER).sort((a, b) => (b.stock ?? 0) - (a.stock ?? 0));
 
   async function exportXlsx() {
+    setSaving(true);
+    try {
     const XLSX = await import('xlsx');
     const data = list.map(r => ({ 'Mã sản phẩm': r.ax_code ?? '', 'Tên sản phẩm': nm(r), 'NCC': r.vendor ?? '', 'Tồn': r.stock ?? 0,
       'Đã bán (ước)': r.sold, 'Số ngày': r.span, 'Bán/ngày': Math.round(rate(r) * 10) / 10, 'Đủ bán (ngày)': isFinite(cover(r)) ? Math.round(cover(r)) : '' }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'Bao cao');
     const name = { top: 'ban-chay', low: 'sap-het', slow: 'ban-cham' }[tab];
-    await saveXlsx(wb, `${name}-${days}ngay-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    await saveXlsx(wb, `${name}-${days}ngay-${vnDay()}.xlsx`);
+    } finally { setSaving(false); }
   }
 
   return (
@@ -58,7 +64,7 @@ export default function Sales({ member }: { member: Member }) {
       {err && <p className="note bad">{err}</p>}
       {!rows && !err && <p className="note">Đang tính…</p>}
       {rows && span < COVER && <p className="note warn">Mới có số liệu {span} ngày, cần nhập file tồn kho đều đặn khoảng 1–2 tuần thì báo cáo mới chính xác.</p>}
-      {rows && <p className="note">{tab === 'top' ? 'Xếp theo số bán mỗi ngày.' : tab === 'low' ? `Bán được mà tồn chỉ đủ dưới ${COVER} ngày (gồm cả hàng đã hết).` : `Còn tồn nhưng không bán được cái nào trong ${span} ngày qua.`} {list.length} sản phẩm{list.length > SHOW ? `, hiện ${SHOW} đầu, xem hết bằng Xuất Excel` : ''}.</p>}
+      {rows && <p className="note">{tab === 'top' ? 'Xếp theo số bán mỗi ngày.' : tab === 'low' ? `Bán từ 1 cái/ngày mà tồn chỉ đủ dưới ${COVER} ngày (gồm cả hàng đã hết).` : `Còn tồn nhưng không bán được cái nào trong ${span} ngày qua.`} {list.length} sản phẩm{list.length > SHOW ? `, hiện ${SHOW} đầu, xem hết bằng Xuất Excel` : ''}.</p>}
       {list.length > 0 && <>
         <div className="list">
           {list.slice(0, SHOW).map(r => (
@@ -73,7 +79,7 @@ export default function Sales({ member }: { member: Member }) {
             </div>
           ))}
         </div>
-        <button className="pri block" onClick={exportXlsx}><Icon name="download" size={18} />Xuất Excel</button>
+        <button className="pri block" disabled={saving} onClick={exportXlsx}><Icon name="download" size={18} />Xuất Excel</button>
       </>}
     </>
   );

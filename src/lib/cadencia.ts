@@ -56,7 +56,7 @@ export function diffCatalog(rows: Record<string, unknown>[], existing: Existing[
     it.barcodes.forEach(b => seenBc.set(b, it.ax || it.name));
     const e = old.get(it.ax);
     if (!e) return p.added.push(it);
-    if (!it.brand && e.brand && e.vendorCode === it.vendorCode) it.brand = e.brand;   // file để trống nhãn thì giữ nhãn đã đặt tay (vd. Monge → điều khoản 1 năm)
+    if (!it.brand && e.brand && (e.vendorCode === it.vendorCode || !e.vendorCode || e.vendorCode.startsWith('TB-'))) it.brand = e.brand;   // file để trống nhãn thì giữ nhãn đã đặt tay (vd. Monge → điều khoản 1 năm)
     const changes = [
       e.name !== it.name && 'tên', e.price !== it.price && 'giá', e.vendorCode !== it.vendorCode && 'NCC', e.brand != null && (e.brand || '') !== (it.brand || '') && 'nhãn', !!it.category && (e.category || '') !== it.category && 'nhóm', !e.active && 'bán lại',
     ].filter(Boolean) as string[];
@@ -115,10 +115,12 @@ const vn = (x: string) => x.normalize('NFD').toLowerCase()
   .replace(new RegExp(`(?<!q)(u)(y)(${TONE})(?![\\p{L}\\p{M}])`, 'gu'), '$1$3$2');
 export function byAccent<T extends { name: string; name_vi?: string | null }>(list: T[], q: string): T[] {
   if (unaccent(q) === q.toLowerCase()) return list;
-  const words = vn(q).split(/\s+/).filter(Boolean);
+  const words = vn(q).split(/\s+/).filter(Boolean), esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = words.map(w => new RegExp(esc(w) + '(?!\\p{M})', 'u'));   // "phô" không khớp "phổ" (thêm dấu thanh)
+  const en = words.map(w => new RegExp(`(^|[^\\p{L}])${esc(unaccent(w))}(?![\\p{L}\\p{M}])`, 'u'));   // tên tiếng Anh: khớp nguyên từ ("tôm" ≠ Tomato)
   const hit = list.filter(p => {
     const t = `${p.name} ${p.name_vi ?? ''}`, v = vn(t), plain = t.normalize('NFC').toLowerCase();
-    return words.every(w => unaccent(w) === w || v.includes(w) || new RegExp(`(^|[^\\p{L}])${unaccent(w).replace(/\W/g, '\\$&')}`, 'u').test(plain));
+    return words.every((w, i) => unaccent(w) === w || re[i].test(v) || en[i].test(plain));
   });
   return hit.length ? hit : list;
 }
