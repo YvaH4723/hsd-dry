@@ -17,7 +17,7 @@ assert.equal(t('Yes (90 days)'), 'return:90');
 assert.equal(t('Yes  - 6 months'), 'return:180');
 assert.equal(t('No'), 'discount:null');
 assert.equal(t('0'), 'discount:null');
-assert.equal(t(null), 'discount:null');
+assert.equal(t(null), 'review'); assert.equal(t(''), 'review'); assert.equal(t('No'), 'discount:null');
 assert.equal(t('Yes - Food: 36days - NF: 216 days'), 'return:36');
 assert.equal(t('No - Food: 30 days'), 'review');
 assert.equal(t('Fresh food: 3 days, Dry food: 90 days'), 'review');

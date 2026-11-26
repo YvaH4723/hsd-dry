@@ -13,7 +13,8 @@ export const normVendor = (s: unknown) => String(s ?? '').replace(/\s+/g, '').to
 export function parseTerm(value: unknown): ParsedTerm {
   const raw = value == null ? '' : String(value).normalize('NFC').trim();
   const s = raw.replace(/\s+/g, ' ');
-  if (/^(no|0|)$/i.test(s)) return { action: 'discount', days: null, review: false, raw };
+  if (!s) return { action: 'return', days: null, review: true, raw };   // ô trống = chưa biết hạn: vào Cần xem, không coi là không đổi trả
+  if (/^(no|0)$/i.test(s)) return { action: 'discount', days: null, review: false, raw };
   if (/^no\b/i.test(s)) return { action: 'return', days: null, review: true, raw };
 
   // "Yes - Food: 36days - NF: 216 days": quầy Dry lấy phần Food
