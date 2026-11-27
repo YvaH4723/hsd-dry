@@ -124,3 +124,14 @@ export function byAccent<T extends { name: string; name_vi?: string | null }>(li
   });
   return hit.length ? hit : list;
 }
+
+// Master Data of Product: AX → tên Việt trên tem giá (bỏ dòng không có tên Việt hoặc tên Việt trùng tên Anh).
+export const masterVi = (rows: Record<string, unknown>[]) => {
+  const out = new Map<string, string>();
+  for (const r of rows) {
+    const ax = String(r['Product ID'] ?? '').trim().toUpperCase();
+    const vi = String(r['Product Name Vi Price Tag'] || r['Product Name Vi E Invoice'] || '').normalize('NFC').trim();
+    if (ax && vi && !/^(invalid|na|n\/a)$/i.test(vi) && vi.toLowerCase() !== String(r['Product Name'] ?? '').trim().toLowerCase()) out.set(ax, vi);
+  }
+  return out;
+};

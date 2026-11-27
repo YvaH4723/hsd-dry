@@ -208,6 +208,14 @@ const [cadPath, conPath] = process.argv.slice(2);
     const N = [{ name: 'Pu-Erh', name_vi: 'Trà Phổ Nhĩ' }, { name: 'Cheese', name_vi: 'Phô mai' }, { name: 'Tomato Sauce' }, { name: 'Tôm khô' }, { name: 'Fresh Milk' }, { name: 'Mì gói' }];
     const g = (q: string) => byAccent(N, q).map(p => p.name).join();
     if (g('phô') !== 'Cheese' || g('tôm') !== 'Tôm khô' || g('mì') !== 'Mì gói') throw new Error('accent3 ' + [g('phô'), g('tôm'), g('mì')]);
+    const { masterVi } = await import('../src/lib/cadencia.ts');
+    const mv = masterVi([
+      { 'Product ID': 'h101111 ', 'Product Name': "E'mos Tissue", 'Product Name Vi Price Tag': 'Giấy E\'Mos 180 Tờ' },
+      { 'Product ID': 'F1', 'Product Name': 'Same', 'Product Name Vi Price Tag': 'same' },          // trùng tên Anh: bỏ
+      { 'Product ID': 'F2', 'Product Name': 'X', 'Product Name Vi Price Tag': 'INVALID' },         // không có tên: bỏ
+      { 'Product ID': 'F3', 'Product Name': 'Y', 'Product Name Vi Price Tag': null, 'Product Name Vi E Invoice': 'Tên hoá đơn' },
+    ]);
+    assert.deepEqual([...mv], [['H101111', "Giấy E'Mos 180 Tờ"], ['F3', 'Tên hoá đơn']]);
     console.log('accent ok');
   } }
 
