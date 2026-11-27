@@ -59,20 +59,81 @@ export function rowRuns(px: ArrayLike<number>): number[] {
   return runs;
 }
 
-// Quét nhiều dòng ngang và dọc của ảnh xám (w×h), cả hai chiều đọc.
-export function scanGray(g: Uint8Array, w: number, h: number): string | null {
-  const seen = new Map<string, number>();
-  const hit = (px: ArrayLike<number>) => {
-    for (const r of [rowRuns(px), rowRuns(Array.from(px).reverse())]) {
-      const code = decodeRuns(r);
-      if (code && (seen.set(code, (seen.get(code) ?? 0) + 1).get(code)! >= 2)) return code;
+// Mã in loang mực (khe trắng 1 module bị lấp, 2 vạch dính thành 1): không tách được vạch theo mép nên đếm độ rộng hỏng.
+// Cách khác: lấy mép trái của vạch mở đầu và mép phải của vạch kết thúc, chia đều 95 ô (module), ô nào tối hơn
+// trung bình 7 ô quanh nó là vạch. Khe bị lấp vẫn sáng hơn vạch hai bên nên vẫn nhận ra. Nặng hơn: chỉ dùng cho ảnh chụp.
+const BITS_L = ['0001101', '0011001', '0010011', '0111101', '0100011', '0110001', '0101111', '0111011', '0110111', '0001011'];
+const BITS_R = BITS_L.map(p => [...p].map(c => c === '0' ? '1' : '0').join('')), BITS_G = BITS_R.map(p => [...p].reverse().join(''));
+function decodeBits(b: string): string | null {
+  if (b.slice(0, 3) !== '101' || b.slice(45, 50) !== '01010' || b.slice(92) !== '101') return null;
+  const ds: number[] = []; let par = '';
+  for (let k = 0; k < 6; k++) {
+    const x = b.slice(3 + 7 * k, 10 + 7 * k), l = BITS_L.indexOf(x), g = BITS_G.indexOf(x);
+    if (l >= 0) { ds.push(l); par += 'L'; } else if (g >= 0) { ds.push(g); par += 'G'; } else return null;
+  }
+  for (let k = 0; k < 6; k++) { const r = BITS_R.indexOf(b.slice(50 + 7 * k, 57 + 7 * k)); if (r < 0) return null; ds.push(r); }
+  const c = [PAR.indexOf(par), ...ds];
+  if (c[0] < 0) return null;
+  const s = c.slice(0, 12).reduce((a, v, j) => a + v * (j % 2 ? 3 : 1), 0);
+  return (10 - s % 10) % 10 === c[12] ? c.join('') : null;
+}
+export function gridRow(px: ArrayLike<number>): string | null {
+  const n = px.length, W = Math.max(15, n >> 4), sum = new Float64Array(n + 1);
+  for (let i = 0; i < n; i++) sum[i + 1] = sum[i] + px[i];
+  const dark = new Uint8Array(n);
+  for (let i = 0; i < n; i++) { const a = Math.max(0, i - W), b = Math.min(n, i + W); dark[i] = +(px[i] < (sum[b] - sum[a]) / (b - a) - 6); }
+  // Mép trái: đầu đoạn tối có ≥ 6 điểm sáng phía trước (vùng trắng). Mép phải: cuối đoạn tối có ≥ 3 điểm sáng phía sau.
+  // Chỉ thử đoạn giống mã vạch: 12–32 vạch (EAN có 30, loang thì dính bớt), không có khoảng trắng nào dài quá 5 module.
+  const at = (x: number) => { const i = Math.min(n - 2, Math.max(0, Math.floor(x))), f = x - i; return px[i] * (1 - f) + px[i + 1] * f; };
+  const v = new Float64Array(95), OFF = [-0.3, -0.15, 0, 0.15, 0.3, 0.45];   // mực loang làm vạch đầu/cuối phình ra
+  for (let l = 6; l < n; l++) {
+    if (!dark[l] || dark[l - 1] || dark[l - 2] || dark[l - 3] || dark[l - 4] || dark[l - 5] || dark[l - 6]) continue;
+    let bars = 0, gap = 0, maxGap = 0;
+    for (let i = l; i + 3 < n; i++) {
+      if (dark[i]) { if (i === l || !dark[i - 1]) bars++; gap = 0; } else maxGap = Math.max(maxGap, ++gap);
+      if (bars > 32 || maxGap > 60 || i - l > 95 * 12) break;
+      if (!dark[i] || dark[i + 1] || dark[i + 2] || dark[i + 3]) continue;
+      const r = i + 1, m0 = (r - l) / 95;
+      if (m0 < 1.5 || bars < 12 || maxGap > 5 * m0) continue;
+      for (const dl of OFF) for (const dr of OFF) {
+        const x0 = l - dl * m0, m = (r + dr * m0 - x0) / 95;
+        for (let k = 0; k < 95; k++) v[k] = at(x0 + (k + 0.5) * m);
+        let bits = '';
+        for (let k = 0; k < 95; k++) {
+          let t = 0; for (let j = k - 3; j <= k + 3; j++) t += v[Math.min(94, Math.max(0, j))];
+          bits += v[k] < t / 7 ? '1' : '0';
+        }
+        const c = decodeBits(bits);
+        if (c) return c;
+      }
     }
+  }
+  return null;
+}
+
+// Quét nhiều dòng ngang và dọc của ảnh xám (w×h), cả hai chiều đọc.
+export function scanGray(g: Uint8Array, w: number, h: number, deep = false): string | null {
+  const seen = new Map<string, number>();
+  const ok = (code: string | null) => !!code && seen.set(code, (seen.get(code) ?? 0) + 1).get(code)! >= 2;
+  const hit = (px: ArrayLike<number>) => {
+    const rev = Array.from(px).reverse();
+    for (const r of [rowRuns(px), rowRuns(rev)]) { const code = decodeRuns(r); if (ok(code)) return code; }
+    if (deep) for (const p of [px, rev]) { const code = gridRow(p); if (ok(code)) return code; }
     return null;
   };
-  for (let k = 1; k < 24; k++) {
-    const y = Math.floor(h * k / 24), x = Math.floor(w * k / 24);
-    const c1 = hit(g.subarray(y * w, y * w + w)); if (c1) return c1;
-    const col = new Uint8Array(h); for (let j = 0; j < h; j++) col[j] = g[j * w + x];
+  // Ảnh chụp: mã nhỏ trong khung chỉ trúng vài dòng nên quét dày hơn.
+  // Ảnh chụp kỹ: dòng là trung bình ~13 dòng liền nhau (dọc theo vạch) để bớt nhiễu mực in.
+  const N = deep ? 96 : 24, R = deep ? Math.max(2, Math.round(Math.min(w, h) / 250)) : 0;
+  for (let k = 1; k < N; k++) {
+    const y = Math.floor(h * k / N), x = Math.floor(w * k / N);
+    const row = new Float32Array(w), col = new Float32Array(h);
+    for (let d = -R; d <= R; d++) {
+      const yy = Math.min(h - 1, Math.max(0, y + d)), xx = Math.min(w - 1, Math.max(0, x + d));
+      for (let j = 0; j < w; j++) row[j] += g[yy * w + j];
+      for (let j = 0; j < h; j++) col[j] += g[j * w + xx];
+    }
+    if (R) { for (let j = 0; j < w; j++) row[j] /= 2 * R + 1; for (let j = 0; j < h; j++) col[j] /= 2 * R + 1; }
+    const c1 = hit(row); if (c1) return c1;
     const c2 = hit(col); if (c2) return c2;
   }
   return null;
@@ -89,5 +150,5 @@ export function scanImage(src: CanvasImageSource, W: number, H: number, crop = t
   cx.drawImage(src, (W - sw) / 2, (H - sh) / 2, sw, sh, 0, 0, w, h);
   const d = cx.getImageData(0, 0, w, h).data, g = new Uint8Array(w * h);
   for (let i = 0; i < g.length; i++) g[i] = (d[i * 4] * 77 + d[i * 4 + 1] * 150 + d[i * 4 + 2] * 29) >> 8;
-  return scanGray(g, w, h);
+  return scanGray(g, w, h, !crop);   // ảnh chụp (không cắt khung): quét kỹ
 }
