@@ -32,6 +32,25 @@ export async function findByCode(store: string, raw: string): Promise<Product | 
   } catch (e) { if (isNet(e)) return localFindByCode(c); throw e; }
 }
 
+// Tra giá ngoài quầy Dry (bảng price_items, từ file Master Data). Cần mạng.
+export interface PriceItem { ax_code: string; name: string; name_vi: string | null; price: number; unit: string | null; category: string | null }
+const PRICE_COLS = 'ax_code,name,name_vi,price,unit,category';
+export async function priceByCode(store: string, code: string): Promise<PriceItem | null> {
+  const c = code.trim();
+  const q = supabase.from('price_items').select(PRICE_COLS).eq('store_id', store);
+  const r = /^\d{6,14}$/.test(c) ? await q.overlaps('codes', codeVariants(c)).limit(1) : await q.ilike('ax_code', c.replace(/[%_*,()]/g, '')).limit(1);
+  return (ok(r) as PriceItem[] | null)?.[0] ?? null;
+}
+export async function priceSearch(store: string, q: string, limit = 20): Promise<PriceItem[]> {
+  const s = q.trim().replace(/[,()*%"\\]/g, ' ').trim(), words = unaccent(s).split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  if (/^\d{6,14}$/.test(s)) { const p = await priceByCode(store, s); return p ? [p] : []; }
+  const byName = words.map(w => `name_search.ilike.*${w}*`).join(',');
+  const accented = unaccent(s) !== s.toLowerCase();
+  const r = await supabase.from('price_items').select(PRICE_COLS).eq('store_id', store).or(`and(${byName}),ax_code.ilike.${words[0]}*`).order('name').limit(accented ? 300 : limit);
+  return byAccent((ok(r) as PriceItem[] | null) ?? [], s).slice(0, limit);
+}
+
 // Mọi sản phẩm có mã vạch khớp (mã 12/13 số), mỗi sản phẩm một lần.
 type Res = { data: Product[]; error: { message: string } | null };
 const fromLocal = async (f: () => Promise<Product[]>): Promise<Res> => {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
-import { diffCatalog, diffTB, mapRow, masterVi, TB_COL, vendorKey, type Existing, type Preview } from '../lib/cadencia.ts';
+import { diffCatalog, diffTB, mapRow, masterPrices, masterVi, TB_COL, vendorKey, type Existing, type Preview } from '../lib/cadencia.ts';
 
 const mapAll = (rows: Record<string, unknown>[]) => rows.map(mapRow).filter(i => i.ax);
 import { resolveVendors, type VendorTerm } from '../lib/terms.ts';
@@ -238,26 +238,29 @@ function ContactImport({ store }: { store: string }) {
 // sản phẩm của cửa hàng đang trống tên Việt. Không đụng gì khác. File lớn (~20 MB): nên nhập trên máy tính.
 function MasterImport({ store }: { store: string }) {
   const [todo, setTodo] = useState<{ ax: string; vi: string }[] | null>(null);
+  const [prices, setPrices] = useState<ReturnType<typeof masterPrices> | null>(null);
   const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
 
   async function pick(f?: File) {
     if (!f) return;
-    setBusy(true); setMsg('Đang đọc file (file lớn, có thể mất 1–2 phút)…'); setTodo(null);
+    setBusy(true); setMsg('Đang đọc file (file lớn, có thể mất 1–2 phút)…'); setTodo(null); setPrices(null);
     try {
-      const vi = masterVi(await readRows(f, 'Product ID', 'Master Data of Product'));
+      const rows = await readRows(f, 'Product ID', 'Master Data of Product');
+      const vi = masterVi(rows);
+      setPrices(masterPrices(rows));
       if (!vi.size) throw new Error('Không thấy cột "Product Name Vi Price Tag". Có đúng file Master Data of Product không?');
       const empty = await fetchAll<{ ax_code: string }>((a, b) => supabase.from('products').select('ax_code').eq('store_id', store)
         .is('deleted_at', null).or('name_vi.is.null,name_vi.eq.').not('ax_code', 'is', null).order('id').range(a, b));
       const t = empty.map(p => String(p.ax_code).trim().toUpperCase()).filter(ax => vi.has(ax)).map(ax => ({ ax, vi: vi.get(ax)! }));
       setTodo(t);
-      setMsg(`${empty.length} sản phẩm đang trống tên Việt, file có tên cho ${t.length}.`);
+      setMsg(`${empty.length} sản phẩm đang trống tên Việt, file có tên cho ${t.length}. Tra giá: ${masterPrices(rows).length.toLocaleString('vi-VN')} món (trừ hàng tươi).`);
     } catch (e: any) { setMsg('Lỗi: ' + e.message); }
     setBusy(false);
   }
 
   async function apply() {
-    if (!todo) return;
+    if (!todo || !prices) return;
     setBusy(true);
     try {
       let n = 0;
@@ -268,8 +271,21 @@ function MasterImport({ store }: { store: string }) {
         n += data ?? 0;
       }
       await supabase.from('import_runs').insert({ store_id: store, kind: 'master_vi', updated: n });
-      setMsg(`Xong: điền tên Việt cho ${n} sản phẩm.`);
-      setTodo(null);
+      // Bảng tra giá: ghi đè toàn bộ, món không còn trong file thì xóa (mốc giờ máy chủ).
+      const sn = await supabase.rpc('server_now'); if (sn.error) throw sn.error;
+      const at = sn.data as string;
+      let k = 0;
+      for (const c of chunks(prices, 1000)) {
+        setMsg(`Đang ghi bảng giá… ${k.toLocaleString('vi-VN')}/${prices.length.toLocaleString('vi-VN')}`);
+        const { error } = await supabase.from('price_items').upsert(c.map(x => ({ ...x, store_id: store, updated_at: at })), { onConflict: 'store_id,ax_code' });
+        if (error) throw error;
+        k += c.length;
+      }
+      const del = await supabase.from('price_items').delete().eq('store_id', store).lt('updated_at', at);
+      if (del.error) throw del.error;
+      await supabase.from('import_runs').insert({ store_id: store, kind: 'master_price', updated: k });
+      setMsg(`Xong: điền tên Việt cho ${n} sản phẩm, cập nhật giá ${k.toLocaleString('vi-VN')} món để tra giá.`);
+      setTodo(null); setPrices(null);
       refreshSnapshot(store);
     } catch (e: any) { setMsg('Lỗi khi ghi (chọn lại file để làm tiếp): ' + e.message); }
     setBusy(false);
@@ -277,14 +293,14 @@ function MasterImport({ store }: { store: string }) {
 
   return (
     <div className="panel">
-      <h2>Tên tiếng Việt (Master Data)</h2>
-      <p className="note">File "Master Data of Product". Chỉ điền cho sản phẩm đang trống tên Việt, không đè tên đã có. File lớn: nên làm trên máy tính.</p>
+      <h2>Tên tiếng Việt và bảng giá (Master Data)</h2>
+      <p className="note">File "Master Data of Product". Điền tên Việt cho sản phẩm đang trống (không đè tên đã có) và cập nhật bảng tra giá cả cửa hàng (giá Hà Nội, trừ hàng tươi). File lớn: nên làm trên máy tính.</p>
       <input type="file" accept=".xlsx,.xls" aria-label="Chọn file Master Data" disabled={busy} onChange={e => { pick(e.target.files?.[0]); e.target.value = ''; }} />
       {msg && <p className={msg.startsWith('Lỗi') ? 'msg bad' : 'note'}>{msg}</p>}
-      {todo && todo.length > 0 && (
+      {todo && prices && (
         <>
-          <p className="note">Ví dụ: {todo.slice(0, 3).map(t => `${t.ax} → ${t.vi}`).join('; ')}</p>
-          <button className="pri block" disabled={busy} onClick={apply}>Xác nhận ghi {todo.length} tên</button>
+          {todo.length > 0 && <p className="note">Ví dụ tên: {todo.slice(0, 3).map(t => `${t.ax} → ${t.vi}`).join('; ')}</p>}
+          <button className="pri block" disabled={busy} onClick={apply}>Xác nhận ghi ({todo.length} tên, {prices.length.toLocaleString('vi-VN')} giá)</button>
         </>
       )}
     </div>

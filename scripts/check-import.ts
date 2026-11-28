@@ -216,6 +216,18 @@ const [cadPath, conPath] = process.argv.slice(2);
       { 'Product ID': 'F3', 'Product Name': 'Y', 'Product Name Vi Price Tag': null, 'Product Name Vi E Invoice': 'Tên hoá đơn' },
     ]);
     assert.deepEqual([...mv], [['H101111', "Giấy E'Mos 180 Tờ"], ['F3', 'Tên hoá đơn']]);
+    const { masterPrices } = await import('../src/lib/cadencia.ts');
+    const base = { 'Category Name Level 1': '1 - FOOD', 'Category Name Level 2': '101 - DRY FOOD', 'Category Name Level 3': '10101 - SWEET GROCERY', 'Is Blocked On Pos': 'Not Blocked On POS', 'Hanoi Sales Unit Id': 'PCS' };
+    const mp = masterPrices([
+      { ...base, 'Product ID': 'F200602', 'Product Name': 'Tai Tai five mix nut (190g)', 'Hanoi Sales Price': 60000.0000001, 'Product Barcode': '8935149551002' },
+      { ...base, 'Product ID': 'F1', 'Product Name': 'Thịt', 'Hanoi Sales Price': 1, 'Category Name Level 2': '102 - FRESH FOOD' },   // hàng tươi: bỏ
+      { ...base, 'Product ID': 'F2', 'Product Name': 'Khóa', 'Hanoi Sales Price': 1, 'Is Blocked On Pos': 'Blocked On POS' },     // khóa POS: bỏ
+      { ...base, 'Product ID': 'P1', 'Product Name': 'POSM', 'Hanoi Sales Price': 1, 'Category Name Level 1': '11 - POSM' },          // không bán: bỏ
+      { ...base, 'Product ID': 'F3', 'Product Name': 'Chưa giá', 'Hanoi Sales Price': null },                                       // chưa có giá: bỏ
+      { ...base, 'Product ID': 'F4', 'Product Name': 'Cân ký', 'Hanoi Sales Price': 900, 'Hanoi Sales Unit Id': 'G', 'Product Barcode': '036000291452' },
+    ]);
+    assert.deepEqual(mp.map(x => [x.ax_code, x.price, x.unit, x.category]), [['F200602', 60000, null, 'SWEET GROCERY'], ['F4', 900, 'G', 'SWEET GROCERY']]);
+    assert.ok(mp[1].codes.includes('0036000291452'));
     console.log('accent ok');
   } }
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase, canWrite, type Member } from '../supabase.ts';
-import { findByCode, pname, listVendors, searchByCode, searchProducts, useTerms, vendorProducts, type Product, type Vendor } from '../lib/db.ts';
+import { findByCode, money, pname, listVendors, priceByCode, priceSearch, searchByCode, searchProducts, useTerms, vendorProducts, type PriceItem, type Product, type Vendor } from '../lib/db.ts';
 import { unaccent } from '../lib/cadencia.ts';
 import ProductInfo, { ProductRow } from '../components/ProductInfo.tsx';
 import BatchList from '../components/BatchList.tsx';
@@ -26,6 +26,8 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
   const [nocode, setNocode] = useState(false);
   const [scan, setScan] = useState(false);
   const [scanMsg, setScanMsg] = useState('');
+  const [scanPrice, setScanPrice] = useState<PriceItem | null>(null);
+  const [px, setPx] = useState<PriceItem[]>([]);    // món ngoài quầy Dry khớp tìm kiếm (chỉ tra giá)
   const scanOn = useRef(false); scanOn.current = scan;
   const [ncTb, setNcTb] = useState(false);
   const [ncQ, setNcQ] = useState('');
@@ -53,13 +55,16 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
 
   useEffect(() => {
     const s = q.trim();
-    if (s.length < 2) { setRows(null); if (!vendor) setErr(''); return; }
+    if (s.length < 2) { setRows(null); setPx([]); if (!vendor) setErr(''); return; }
     let live = true;
     const t = setTimeout(async () => {
       const res = /^\d{6,14}$/.test(s) ? await searchByCode(store, s) : await searchProducts(store, s, 50, vendor?.id);
       if (!live) return;                       // đã gõ tiếp: bỏ kết quả cũ
       setErr(res.error?.message ?? '');
       setRows(vendor ? res.data.filter(p => p.vendor_id === vendor.id) : res.data);
+      const dry = new Set(res.data.map(p => p.ax_code));
+      const more = vendor ? [] : await priceSearch(store, s).catch(() => []);   // mất mạng: bỏ qua phần tra giá
+      if (live) setPx(more.filter(x => !dry.has(x.ax_code)));
     }, 300);
     return () => { live = false; clearTimeout(t); };
   }, [q, store, vendor?.id]);
@@ -84,8 +89,11 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
     try {
       const p = await findByCode(store, code);
       if (!scanOn.current) return;                 // đã bấm Đóng quét trong lúc tìm
-      if (p) { setScan(false); setScanMsg(''); setOpen(p); scrollTo(0, 0); }
-      else setScanMsg(`Chưa có mã ${code} trong danh mục. Quét món khác, hoặc gắn mã ở Chưa có mã vạch.`);
+      if (p) { setScan(false); setScanMsg(''); setScanPrice(null); setOpen(p); scrollTo(0, 0); return; }
+      const x = await priceByCode(store, code).catch(() => null);
+      if (!scanOn.current) return;
+      setScanPrice(x);
+      setScanMsg(x ? '' : `Chưa có mã ${code} trong danh mục. Quét món khác, hoặc gắn mã ở Chưa có mã vạch.`);
     } catch (e) { setScanMsg((e as Error).message); }
   }
 
@@ -105,7 +113,8 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
         <>
           <Scanner auto onCode={onScan} />
           {scanMsg && <p className="note" role="status">{scanMsg}</p>}
-          <button className="block" onClick={() => { setScan(false); setScanMsg(''); }}><Icon name="x" size={18} />Đóng quét</button>
+          {scanPrice && <div className="list" role="status"><PriceRow x={scanPrice} /></div>}
+          <button className="block" onClick={() => { setScan(false); setScanMsg(''); setScanPrice(null); }}><Icon name="x" size={18} />Đóng quét</button>
         </>
       ) : <button className="block" onClick={() => setScan(true)}><Icon name="camera" size={18} />Quét mã vạch để tìm</button>}
       {vendor ? (
@@ -123,7 +132,14 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
       )}
       {err && <p className="msg bad">{err}</p>}
       {rows == null && !vendor && cat?.length ? <Catalog ps={cat} inStock={inStock} setInStock={v => { setInStock(v); setMore(PAGE); }} more={more} setMore={setMore} openP={p => { setOpen(p); scrollTo(0, 0); }} /> : null}
-      {rows != null ? (rows.length ? list(rows) : !err && <p className="note">Không tìm thấy “{q.trim()}”{vendor ? ' trong NCC này' : ''}. Thử bớt chữ, hoặc gõ mã AX.</p>)
+      {rows != null && px.length > 0 && (
+        <>
+          {rows.length > 0 && list(rows)}
+          <div className="sec"><h2>Ngoài quầy Dry · chỉ tra giá</h2></div>
+          <div className="list">{px.map(x => <PriceRow key={x.ax_code} x={x} />)}</div>
+        </>
+      )}
+      {rows != null && px.length > 0 ? null : rows != null ? (rows.length ? list(rows) : !err && <p className="note">Không tìm thấy “{q.trim()}”{vendor ? ' trong NCC này' : ''}. Thử bớt chữ, hoặc gõ mã AX.</p>)
         : vendor ? (all == null ? (!err && <LotsLoading />) : all.length ? list(all) : <p className="note">NCC này chưa có sản phẩm nào trong danh mục.</p>)
         : cat?.length ? null : (
         <p className="note">
@@ -133,6 +149,20 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
         </p>
       )}
     </>
+  );
+}
+
+// Món ngoài quầy Dry (từ bảng tra giá): chỉ tên và giá, không mở được như sản phẩm Dry.
+function PriceRow({ x }: { x: PriceItem }) {
+  return (
+    <div className="li label-row keep">
+      <div className="grow" style={{ padding: '10px 0 10px 14px' }}>
+        <div className="lot-name">{x.name_vi || x.name}</div>
+        {x.name_vi && <div className="note">{x.name}</div>}
+        <div className="note num">{[x.ax_code, x.category].filter(Boolean).join(' · ')}</div>
+      </div>
+      <div className="pi-price num" style={{ padding: '0 14px', whiteSpace: 'nowrap' }}>{money(x.price)}{x.unit ? <span className="note"> /{x.unit.toLowerCase()}</span> : null}</div>
+    </div>
   );
 }
 

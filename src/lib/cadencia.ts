@@ -135,3 +135,25 @@ export const masterVi = (rows: Record<string, unknown>[]) => {
   }
   return out;
 };
+
+// Master Data: dòng tra giá cho cả cửa hàng. Bỏ hàng tươi (102 - FRESH FOOD: rau củ quả, thịt, hải sản, sữa mát, đông lạnh, bánh mì, đồ nguội),
+// nhóm không bán (POSM, thiết bị, hàng dùng nội bộ…), món bị khóa trên POS và món chưa có giá Hà Nội.
+const SELL = /^[1-5] - /;
+export const masterPrices = (rows: Record<string, unknown>[]) => {
+  const out = new Map<string, { ax_code: string; name: string; name_vi: string | null; name_search: string; price: number; unit: string | null; category: string | null; codes: string[] }>();
+  for (const r of rows) {
+    const ax = String(r['Product ID'] ?? '').trim().toUpperCase(), price = Math.round(Number(r['Hanoi Sales Price']) || 0);
+    if (!ax || price <= 0 || !SELL.test(String(r['Category Name Level 1'] ?? '')) || String(r['Category Name Level 2'] ?? '').startsWith('102 ')
+      || /^blocked/i.test(String(r['Is Blocked On Pos'] ?? ''))) continue;
+    const name = String(r['Product Name'] ?? '').trim(), vi = String(r['Product Name Vi Price Tag'] || '').normalize('NFC').trim();
+    const name_vi = vi && !/^(invalid|na|n\/a)$/i.test(vi) && vi.toLowerCase() !== name.toLowerCase() ? vi : null;
+    const unit = String(r['Hanoi Sales Unit Id'] ?? '').trim().toUpperCase();
+    out.set(ax, {
+      ax_code: ax, name, name_vi, name_search: unaccent(`${name_vi ?? ''} ${name}`), price,
+      unit: unit && unit !== 'PCS' ? unit : null,
+      category: String(r['Category Name Level 3'] ?? '').replace(/^\d+ - /, '') || null,
+      codes: barcodesOf(r['Product Barcode']),
+    });
+  }
+  return [...out.values()];
+};
