@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
-import { money, pname, type Product } from '../lib/db.ts';
+import { money, pname, type PriceItem, type Product } from '../lib/db.ts';
 import { localAddCodes, localDropCodes } from '../lib/offline.ts';
 import { codeVariants, isNet } from '../lib/offline.ts';
 import { canWrite } from '../supabase.ts';
@@ -168,6 +168,20 @@ export default function ProductInfo({ p, member, terms, onChange }: { p: Product
         </details>
       )}
       {err && <p className="msg bad">{err}</p>}
+    </div>
+  );
+}
+
+// Món ngoài quầy Dry (từ bảng tra giá): chỉ tên và giá, không mở được như sản phẩm Dry.
+export function PriceRow({ x }: { x: PriceItem }) {
+  return (
+    <div className="li label-row keep">
+      <div className="grow" style={{ padding: '10px 0 10px 14px' }}>
+        <div className="lot-name">{x.name_vi || x.name}</div>
+        {x.name_vi && <div className="note">{x.name}</div>}
+        <div className="note num">{[x.ax_code, x.category].filter(Boolean).join(' · ')}</div>
+      </div>
+      <div className="pi-price num" style={{ padding: '0 14px', whiteSpace: 'nowrap' }}>{money(x.price)}{x.unit ? <span className="note"> /{x.unit.toLowerCase()}</span> : null}</div>
     </div>
   );
 }

@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase, canWrite, type Member } from '../supabase.ts';
-import { findByCode, money, pname, listVendors, priceByCode, priceSearch, searchByCode, searchProducts, useTerms, vendorProducts, type PriceItem, type Product, type Vendor } from '../lib/db.ts';
+import { findByCode, pname, listVendors, priceByCode, priceSearch, searchByCode, searchProducts, useTerms, vendorProducts, type PriceItem, type Product, type Vendor } from '../lib/db.ts';
 import { unaccent } from '../lib/cadencia.ts';
-import ProductInfo, { ProductRow } from '../components/ProductInfo.tsx';
+import ProductInfo, { PriceRow, ProductRow } from '../components/ProductInfo.tsx';
 import BatchList from '../components/BatchList.tsx';
 import Icon from '../components/Icon.tsx';
 import Scanner from '../components/Scanner.tsx';
@@ -149,20 +149,6 @@ export default function Products({ member, onAdd, rev }: { member: Member; onAdd
         </p>
       )}
     </>
-  );
-}
-
-// Món ngoài quầy Dry (từ bảng tra giá): chỉ tên và giá, không mở được như sản phẩm Dry.
-function PriceRow({ x }: { x: PriceItem }) {
-  return (
-    <div className="li label-row keep">
-      <div className="grow" style={{ padding: '10px 0 10px 14px' }}>
-        <div className="lot-name">{x.name_vi || x.name}</div>
-        {x.name_vi && <div className="note">{x.name}</div>}
-        <div className="note num">{[x.ax_code, x.category].filter(Boolean).join(' · ')}</div>
-      </div>
-      <div className="pi-price num" style={{ padding: '0 14px', whiteSpace: 'nowrap' }}>{money(x.price)}{x.unit ? <span className="note"> /{x.unit.toLowerCase()}</span> : null}</div>
-    </div>
   );
 }
 

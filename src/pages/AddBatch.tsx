@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { supabase, type Member } from '../supabase.ts';
-import { codeVariants, findByCode, pname, PRODUCT_COLS, searchProducts, useNames, useShelves, useTerms, type Product } from '../lib/db.ts';
+import { codeVariants, findByCode, pname, priceByCode, PRODUCT_COLS, searchProducts, useNames, useShelves, useTerms, type PriceItem, type Product } from '../lib/db.ts';
 import { actionFor, termFor } from '../lib/action.ts';
 import { localAddCodes, addBatchOffline, incrBatchOffline, isNet, loadBatches } from '../lib/offline.ts';
 import { daysLeft, fmt, whoLine } from '../lib/dates.ts';
-import ProductInfo, { ProductRow, confirmAttach, attachCode, codeOwner } from '../components/ProductInfo.tsx';
+import ProductInfo, { PriceRow, ProductRow, confirmAttach, attachCode, codeOwner } from '../components/ProductInfo.tsx';
 import ActionLine from '../components/ActionLine.tsx';
 import Scanner from '../components/Scanner.tsx';
 import DateInput, { type DateVal } from '../components/DateInput.tsx';
@@ -31,6 +31,7 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
   const [noRet, setNoRet] = useState(false);          // riêng lô này không đổi trả: chỉ dán giảm giá
   const [msg, setMsg] = useState<Msg>(null);
   const [unknown, setUnknown] = useState('');
+  const [priceHit, setPriceHit] = useState<PriceItem | null>(null);   // mã lạ nhưng có trong bảng tra giá (hàng ngoài quầy Dry)
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<Product[] | null>(null);
   const [saved, setSaved] = useState<string[]>([]);
@@ -65,7 +66,13 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
       setMsg(null);
       if (p) return choose(p);
       setProduct(null);
-      if (/^\d{6,14}$/.test(code)) { setUnknown(code); setQ(''); setHits(null); return; }   // mã vạch lạ: gắn vào sản phẩm
+      setPriceHit(null);
+      if (/^\d{6,14}$/.test(code)) {                                                     // mã vạch lạ: gắn vào sản phẩm
+        setUnknown(code); setQ(''); setHits(null);
+        const x = await priceByCode(store, code).catch(() => null);
+        if (n === seq.current) setPriceHit(x);
+        return;
+      }
       setUnknown(''); setQ(code); search(code);                                            // gõ tên / một phần mã AX
     } catch (e: any) { if (n === seq.current) setMsg({ text: e.message, tone: 'bad' }); }
   }
@@ -139,7 +146,14 @@ export default function AddBatch({ member, initial }: { member: Member; initial?
 
       {(unknown || q) && !product && (
         <>
-          {unknown && <p className="note warn">Chưa có mã <b className="num">{unknown}</b> trong danh mục. Tìm đúng sản phẩm để gắn mã này:</p>}
+          {unknown && priceHit && (
+            <>
+              <p className="note">Hàng ngoài quầy Dry (chỉ tra giá, không thêm lô):</p>
+              <div className="list"><PriceRow x={priceHit} /></div>
+              <p className="note">Nếu đây là hàng quầy Dry chưa có mã, tìm đúng sản phẩm để gắn mã <b className="num">{unknown}</b>:</p>
+            </>
+          )}
+          {unknown && !priceHit && <p className="note warn">Chưa có mã <b className="num">{unknown}</b> trong danh mục. Tìm đúng sản phẩm để gắn mã này:</p>}
           <div className="search"><Icon name="search" size={18} />
             <input aria-label="Tìm sản phẩm" placeholder="Tên sản phẩm hoặc mã AX" value={q} onChange={e => type(e.target.value)} />
           </div>
